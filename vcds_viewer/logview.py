@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, Signal
+from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .chartview import LogChart, SeriesSpec
 from .colors import color_map

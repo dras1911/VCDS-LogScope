@@ -1,4 +1,4 @@
-"""Wykres nakładany w stylu TuneZilla: wiele serii, linia kursora, dymek wartości."""
+"""Wykres nakładany: wiele serii razem, linia kursora i dymek z wartościami."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Optional
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, Signal
+from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .colors import hex_to_rgba
 from .formatting import fmt_num
@@ -26,7 +25,7 @@ class SeriesSpec:
     color: str
     x: np.ndarray
     y: np.ndarray
-    style: Qt.PenStyle = Qt.SolidLine
+    style: int = Qt.SolidLine
     width: float = 1.7
     tag: str = ""                  # np. "Log A" / "Log B" (tryb porównania)
     group: str = ""

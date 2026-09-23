@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, Signal
+from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .colors import color_map
 from .formatting import fmt_num, fmt_time
@@ -43,7 +42,7 @@ class LogTableModel(QtCore.QAbstractTableModel):
         self.columns: list[TableColumn] = []
         self.n_rows = log.n_rows
         self.heatmap = True
-        self.heatmap_color = "#12a150"     # jak w TuneZilla (zielona skala)
+        self.heatmap_color = "#12a150"     # klasyczna zielona skala
         self.show_deltas = True
         self.delta_threshold = 0.01        # 1% zakresu kolumny
         self.hover_rows: dict[str, int] = {}   # grupa -> podświetlony wiersz
@@ -442,7 +441,7 @@ class LogTable(QtWidgets.QWidget):
 
         self.cmb_color = QtWidgets.QComboBox()
         for name, color in (
-            ("Zielona (TuneZilla)", "#12a150"),
+            ("Zielona", "#12a150"),
             ("Niebieska", "#2f6fed"),
             ("Pomarańczowa", "#e8871e"),
             ("Fioletowa", "#8b5cf6"),

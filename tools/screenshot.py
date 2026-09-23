@@ -15,7 +15,7 @@ os.environ.setdefault("QT_SCALE_FACTOR", "1")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from vcds_viewer.qt import QtCore, QtWidgets  # noqa: E402
 
 from vcds_viewer.compare import CompareView  # noqa: E402
 from vcds_viewer.logview import LogView  # noqa: E402

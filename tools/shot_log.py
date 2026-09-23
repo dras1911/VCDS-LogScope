@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from PySide6 import QtWidgets  # noqa: E402
+from vcds_viewer.qt import QtWidgets  # noqa: E402
 
 from vcds_viewer.logview import LogView  # noqa: E402
 from vcds_viewer.mainwindow import MainWindow  # noqa: E402

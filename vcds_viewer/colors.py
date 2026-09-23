@@ -1,9 +1,9 @@
-"""Paleta kolorów — odwzorowanie stylu TuneZilla (kolor per parametr).
+"""Paleta kolorów parametrów.
 
-Kolory przypisywane są rolami: pierwszy parametr danej rodziny dostaje kolor
-„wzorcowy” z TuneZilla (napięcie szare, obciążenie czerwone, obroty żółte...),
-a kolejne parametry tej samej rodziny — następne wolne kolory, tak aby żadne
-dwie serie na wykresie nie miały identycznego koloru.
+Kolory przypisywane są rolami: pierwszy parametr danej rodziny dostaje kolor „wzorcowy”
+dla swojego rodzaju (napięcie szare, obciążenie czerwone, obroty żółte...), a kolejne
+parametry tej samej rodziny — następne wolne kolory, tak aby żadne dwie serie na wykresie
+nie miały identycznego koloru.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ FALLBACK_PALETTE = [
     COLOR_RED, COLOR_LIME, COLOR_PINK, COLOR_BROWN, COLOR_MAGENTA,
 ]
 
-# Rodzina parametru -> uporządkowana lista kolorów (pierwszy = wzorcowy TuneZilla).
+# Rodzina parametru -> uporządkowana lista kolorów (pierwszy = kolor wzorcowy rodziny).
 _FAMILIES: list[tuple[tuple[str, ...], list[str]]] = [
     (("napięcie", "napiecie", "voltage", "batterie", "battery"), [COLOR_GRAY, COLOR_BLUE, COLOR_TEAL]),
     (("obciążenie", "obciazenie", "load"), [COLOR_RED, COLOR_ORANGE, COLOR_LIGHT_PINK]),

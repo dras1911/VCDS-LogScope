@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6 import QtCore, QtWidgets
+from .qt import QtCore, QtWidgets
 
 from . import APP_NAME
 from .mainwindow import MainWindow, app_icon

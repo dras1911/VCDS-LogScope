@@ -17,6 +17,7 @@ DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 APP_NAME = "VCDS LogScope"
 PY = ROOT / ".venv" / "Scripts" / "python.exe"
+PY_LEGACY = ROOT / ".venv38" / "Scripts" / "python.exe"
 
 # Moduły Qt, których aplikacja nie używa — wykluczone, by zmniejszyć rozmiar paczki.
 # UWAGA: NIE wykluczać PySide6.QtOpenGL ani PySide6.QtOpenGLWidgets — pyqtgraph
@@ -35,12 +36,27 @@ EXCLUDES = [
     "tkinter", "matplotlib", "pandas", "scipy", "IPython", "pytest",
 ]
 
+# Wersja dla Windows 7/8 (Python 3.8 + Qt 5.15). Te same wykluczenia, nazwy PySide2.
+EXCLUDES_LEGACY = [
+    "PySide2.QtWebEngineCore", "PySide2.QtWebEngineWidgets", "PySide2.QtWebEngine",
+    "PySide2.QtQuick", "PySide2.QtQml", "PySide2.QtQuickWidgets", "PySide2.QtQuickControls2",
+    "PySide2.Qt3DCore", "PySide2.Qt3DRender", "PySide2.Qt3DInput", "PySide2.Qt3DLogic",
+    "PySide2.Qt3DAnimation", "PySide2.Qt3DExtras", "PySide2.QtCharts",
+    "PySide2.QtDataVisualization", "PySide2.QtMultimedia", "PySide2.QtMultimediaWidgets",
+    "PySide2.QtBluetooth", "PySide2.QtNfc", "PySide2.QtPositioning", "PySide2.QtSensors",
+    "PySide2.QtSerialPort", "PySide2.QtSql", "PySide2.QtTest", "PySide2.QtDesigner",
+    "PySide2.QtHelp", "PySide2.QtLocation", "PySide2.QtRemoteObjects", "PySide2.QtScxml",
+    "PySide2.QtStateMachine", "PySide2.QtTextToSpeech", "PySide2.QtWebChannel",
+    "PySide2.QtWebSockets", "PySide2.QtXmlPatterns",
+    "tkinter", "matplotlib", "pandas", "scipy", "IPython", "pytest",
+]
+
 
 def make_icon() -> Path:
     """Rysuje ikonę aplikacji i zapisuje ją jako .ico (przez Qt + Pillow)."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     sys.path.insert(0, str(ROOT))
-    from PySide6 import QtWidgets  # noqa: PLC0415
+    from vcds_viewer.qt import QtWidgets  # noqa: PLC0415
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     from vcds_viewer.mainwindow import app_icon  # noqa: PLC0415
@@ -62,30 +78,43 @@ def make_icon() -> Path:
     return ico
 
 
-def build(icon: Path, onefile: bool = False) -> Path:
-    """Uruchamia PyInstaller. onefile=True → jeden plik .exe, False → katalog (szybszy start)."""
-    out_dir = (DIST / "onefile") if onefile else DIST
+def build(icon: Path, onefile: bool = False, legacy: bool = False) -> Path:
+    """Uruchamia PyInstaller.
+
+    onefile=True → jeden plik .exe, False → katalog (szybszy start).
+    legacy=True  → build dla Windows 7/8 (Python 3.8 + Qt 5.15, PyInstaller 5).
+    """
+    python = PY_LEGACY if legacy else PY
+    if legacy and not python.exists():
+        raise SystemExit(
+            f"Brak środowiska dla wersji Windows 7: {python}\n"
+            "Utwórz je:  uv venv --python 3.8 .venv38 && "
+            "uv pip install --python .venv38/Scripts/python.exe PySide2==5.15.2.1 "
+            "pyqtgraph==0.13.3 'numpy<1.25' pyinstaller==5.13.2"
+        )
+    tag = "legacy" if legacy else ("onefile" if onefile else "onedir")
+    out_dir = DIST if not (onefile or legacy) else (DIST / tag)
     cmd = [
-        str(PY), "-m", "PyInstaller",
+        str(python), "-m", "PyInstaller",
         "--noconfirm", "--clean", "--windowed",
-        "--onefile" if onefile else "--onedir",
+        "--onefile" if (onefile or legacy) else "--onedir",
         "--name", APP_NAME,
         "--distpath", str(out_dir),
-        "--workpath", str(BUILD / ("pyinstaller_onefile" if onefile else "pyinstaller")),
-        "--specpath", str(BUILD),
+        "--workpath", str(BUILD / f"pyinstaller_{tag}"),
+        "--specpath", str(BUILD / f"spec_{tag}"),
     ]
     if icon and icon.exists():
         cmd += ["--icon", str(icon)]
-    for mod in EXCLUDES:
+    for mod in (EXCLUDES_LEGACY if legacy else EXCLUDES):
         cmd += ["--exclude-module", mod]
     cmd += ["--paths", str(ROOT)]
     cmd.append(str(ROOT / "vcds_logscope.py"))
 
-    print(f"PyInstaller: budowanie paczki ({'onefile' if onefile else 'onedir'})...")
+    print(f"PyInstaller: budowanie paczki ({tag})…")
     res = subprocess.run(cmd, cwd=str(ROOT))
     if res.returncode != 0:
         raise SystemExit(f"PyInstaller zakończył się błędem (kod {res.returncode})")
-    exe = (out_dir / APP_NAME / f"{APP_NAME}.exe") if not onefile else (out_dir / f"{APP_NAME}.exe")
+    exe = (out_dir / APP_NAME / f"{APP_NAME}.exe") if tag == "onedir" else (out_dir / f"{APP_NAME}.exe")
     if not exe.exists():
         raise SystemExit(f"Nie znaleziono pliku wynikowego: {exe}")
     return exe
@@ -132,14 +161,15 @@ def make_shortcut(exe: Path) -> None:
 
 
 def main() -> int:
+    onefile_only = "--onefile" in sys.argv
+    legacy_only = "--legacy" in sys.argv
+    both = "--all" in sys.argv
     if not PY.exists():
         raise SystemExit(f"Brak interpretera w {PY} — utwórz środowisko .venv")
-    onefile_only = "--onefile" in sys.argv
-    both = "--all" in sys.argv
     icon = make_icon()
 
     results: list[tuple[Path, bool]] = []
-    if not onefile_only or both:
+    if not (onefile_only or legacy_only) or both:
         exe = build(icon, onefile=False)
         size_mb = sum(f.stat().st_size for f in exe.parent.rglob("*") if f.is_file()) / 1e6
         print(f"\nWersja katalogowa: {exe}  ({size_mb:.0f} MB)")
@@ -148,8 +178,12 @@ def main() -> int:
         exe1 = build(icon, onefile=True)
         print(f"\nWersja jednoplikowa: {exe1}  ({exe1.stat().st_size / 1e6:.0f} MB)")
         results.append((exe1, smoke_test(exe1)))
+    if legacy_only or both:
+        exe2 = build(icon, legacy=True)
+        print(f"\nWersja dla Windows 7/8: {exe2}  ({exe2.stat().st_size / 1e6:.0f} MB)")
+        results.append((exe2, smoke_test(exe2)))
 
-    if "--no-shortcut" not in sys.argv:
+    if results and "--no-shortcut" not in sys.argv and not (onefile_only or legacy_only):
         make_shortcut(results[0][0])
     ok = all(r[1] for r in results)
     print("\nPodsumowanie:", ", ".join(f"{p.name}: {'OK' if o else 'BŁĄD'}" for p, o in results))

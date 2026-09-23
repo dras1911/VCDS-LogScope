@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, QSettings, Signal
+from .qt import QAction, QSettings, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from . import APP_NAME, APP_TITLE, __version__
 from .compare import CompareView
@@ -172,7 +171,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_actions(self):
         def act(text, shortcut, slot, tip=""):
-            a = QtGui.QAction(text, self)
+            a = QAction(text, self)
             if shortcut:
                 a.setShortcut(shortcut)
             if tip:
@@ -209,7 +208,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m_view.addAction(self.act_theme)
         m_view.addSeparator()
         for text, key in (("Wykres + tabela", "both"), ("Tylko wykres", "chart"), ("Tylko tabela", "table")):
-            a = QtGui.QAction(text, self)
+            a = QAction(text, self)
             a.triggered.connect(lambda _=False, k=key: self.set_view_mode(k))
             m_view.addAction(a)
 
@@ -422,6 +421,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def show_about(self):
+        from .qt import QT_API
+
         QtWidgets.QMessageBox.about(
             self,
             f"O programie {APP_NAME}",
@@ -429,7 +430,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<p>Czytelna wizualizacja logów z programu VCDS (VAG-COM).</p>"
             "<p>Wykres nakładany z kursorem pomiarowym, tabela z kolorowaniem narastającym, "
             "porównanie wielu logów (różnice parametrów).</p>"
-            "<p>Zbudowano na PySide6 + pyqtgraph.</p>",
+            f"<p>Zbudowano na {QT_API} + pyqtgraph.</p>",
         )
 
     # ------------------------------------------------------------ ostatnie pliki
@@ -448,17 +449,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if isinstance(recent, str):
             recent = [recent]
         if not recent:
-            a = QtGui.QAction("(brak)", self)
+            a = QAction("(brak)", self)
             a.setEnabled(False)
             self.menu_recent.addAction(a)
             return
         for path in recent[:12]:
-            a = QtGui.QAction(Path(path).name + "   —   " + str(Path(path).parent), self)
+            a = QAction(Path(path).name + "   —   " + str(Path(path).parent), self)
             a.setToolTip(path)
             a.triggered.connect(lambda _=False, p=path: self.open_path(p))
             self.menu_recent.addAction(a)
         self.menu_recent.addSeparator()
-        clear = QtGui.QAction("Wyczyść listę", self)
+        clear = QAction("Wyczyść listę", self)
         clear.triggered.connect(lambda: (self.settings.setValue("recent", []), self._refresh_recent()))
         self.menu_recent.addAction(clear)
 

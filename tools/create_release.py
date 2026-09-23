@@ -24,48 +24,51 @@ UPLOADS = "https://uploads.github.com"
 
 NOTES = """## VCDS LogScope 1.0
 
-Czytelna wizualizacja logów z **VCDS / VAG-COM** — program dla Windows (Python + PySide6 + pyqtgraph).
+Czytelne przeglądanie logów z **VCDS / VAG-COM** — program dla Windows, nie wymaga instalacji
+ani internetu. Logi nie są nigdzie wysyłane.
 
 ### Co potrafi
 
-**Wykres nakładany (styl TuneZilla)**
-- wszystkie parametry na jednym wykresie, każdy w swoim kolorze dobranym wg rodzaju parametru
-- linia pomocnicza (kursor) z kropkami na każdej serii i dymkiem wartości
-- **etykieta przy osi X pokazująca jednocześnie czas i obroty** w miejscu kursora (w TuneZilli trzeba się domyślać)
-- oś X: **czas [s]** albo **obroty [obr/min]**; normalizacja 0–100% dla parametrów o różnych zakresach
-- zoom rolką (oś X), `Ctrl`+rolka (oś Y), przeciąganie, dwuklik = dopasowanie
+**Wykres ze wszystkimi parametrami naraz**
+- każdy parametr ma własny kolor, więc od razu widać, która linia to obroty, a która obciążenie
+- linia kursora z dymkiem: najedź myszą i masz wartości wszystkich parametrów w tym momencie
+- przy osi X wyświetla się **dokładny czas i obroty** w miejscu kursora — nie trzeba niczego zgadywać
+- wykres w funkcji **czasu** albo w funkcji **obrotów**
+- „Normalizuj 0–100%”, gdy parametry mają bardzo różne wartości (obroty 0–6000, temperatura 80–90)
+- zoom rolką, przesuwanie, eksport wykresu do PNG
 
-**Tabela z kolorowaniem narastającym**
-- kolumny w blokach „Grupa A/B/C” z dwupoziomowym nagłówkiem
-- heatmapa (zielona skala jak w TuneZilli, do wyboru też inne)
-- strzałki wzrostów/spadków ▲▼ względem poprzedniego wiersza
-- wiersz podąża za kursorem wykresu, klik w wiersz ustawia kursor
+**Tabela z kolorowaniem**
+- im wyższa wartość, tym mocniejszy kolor komórki — wzrosty obrotów widać na pierwszy rzut oka
+- zielone ▲ i czerwone ▼ pokazują wzrost lub spadek względem poprzedniego wiersza
+- wiersz podświetla się razem z kursorem wykresu, kliknięcie w wiersz ustawia kursor
 
-**Porównanie dwóch lub więcej logów**
-- nakładka: log A linią ciągłą, log B przerywaną, C kropkowaną…
-- tabela różnic Δ = log B − log A na wspólnej siatce czasu z kolorowaniem delt
-- statystyki (min/max/średnia, średnia i maksymalna różnica) oraz przesunięcie czasowe logu B
+**Porównanie dwóch lub więcej logów** (`Ctrl+T`)
+- log A linią ciągłą, log B przerywaną — te same parametry w tym samym kolorze
+- tabela różnic: ile log B ma więcej lub mniej niż log A w każdym momencie
+- statystyki (min/max/średnia, największa różnica) i przesunięcie czasowe logu B
 
 **Obsługa logów VCDS**
-- eksport CSV w wersji polskiej, angielskiej i niemieckiej (kodowanie CP1250/CP1252/UTF-8)
-- 1–3 grupy pomiarowe, osobne kolumny czasu każdej grupy, kolumny binarne, wiele bloków w pliku
+- eksport CSV w wersji polskiej, angielskiej i niemieckiej (Windows-1250/1252, UTF-8)
+- jedna, dwie albo trzy grupy pomiarowe; osobne kolumny czasu każdej grupy
 - automatyczne rozpoznawanie parametrów i jednostek (`/min`, `%`, `ms`, `g/s`, `°C`, `°PGMP`, `mbar`…)
 
 ### Pliki do pobrania
 
-- **`VCDS LogScope.exe`** — wersja jednoplikowa (zalecana), nie wymaga instalacji ani Pythona
-- `VCDS-LogScope-1.0-portable.zip` — wersja katalogowa (szybszy start, bez rozpakowywania do TEMP)
-
-Wymagania: Windows 10/11 64-bit. Program jest przenośny — nic nie instaluje w systemie.
+| Plik | System |
+|---|---|
+| **`VCDS-LogScope.exe`** | Windows 10 / 11 (64-bit) — zalecana, jeden plik |
+| `VCDS-LogScope-1.0-Windows7.exe` | **Windows 7 / 8 / 8.1** i nowsze — dla starszych laptopów warsztatowych |
+| `VCDS-LogScope-1.0-portable.zip` | Windows 10 / 11 — rozpakowany katalog, startuje szybciej |
 
 ### Szybki start
 
-1. Uruchom `VCDS LogScope.exe`
+1. Uruchom plik `.exe` (przy pierwszym starcie Windows może pokazać ostrzeżenie
+   „Nieznany wydawca” — kliknij *Więcej informacji → Uruchom mimo to*)
 2. `Ctrl+O` albo przeciągnij plik CSV z VCDS na okno programu
 3. Najedź myszą na wykres — linia kursora pokaże wartości wszystkich parametrów
 4. `Ctrl+T` — porównanie dwóch logów
 
-Pełny opis: [README](https://github.com/dras1911/VCDS-LogScope#readme)
+Opis programu: [README](https://github.com/dras1911/VCDS-LogScope#readme)
 """
 
 
@@ -101,17 +104,18 @@ def api(token: str, method: str, url: str, payload=None, content_type="applicati
         raise
 
 
-def upload_asset(token: str, release_id: int, path: Path, replace: bool = True) -> str:
+def upload_asset(token: str, release_id: int, path: Path, asset_name: str | None = None,
+                 replace: bool = True) -> str:
     """Wgrywa plik jako załącznik wydania (z opcją podmiany istniejącego)."""
+    name = asset_name or path.name
     if replace:
         for asset in api(token, "GET", f"{API}/repos/{REPO}/releases/{release_id}/assets"):
-            if asset["name"] in (path.name, path.name.replace(" ", ".")):
-                api(token, "DELETE",
-                    f"{API}/repos/{REPO}/releases/assets/{asset['id']}")
+            if asset["name"] in (name, name.replace(" ", "."), path.name, path.name.replace(" ", ".")):
+                api(token, "DELETE", f"{API}/repos/{REPO}/releases/assets/{asset['id']}")
                 print(f"Usunięto poprzedni załącznik: {asset['name']}")
-    ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    url = f"{UPLOADS}/repos/{REPO}/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}"
-    print(f"Wgrywam {path.name} ({path.stat().st_size / 1e6:.1f} MB)…")
+    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    url = f"{UPLOADS}/repos/{REPO}/releases/{release_id}/assets?name={urllib.parse.quote(name)}"
+    print(f"Wgrywam {name} ({path.stat().st_size / 1e6:.1f} MB)…")
     res = api(token, "POST", url, payload=path.read_bytes(), content_type=ctype)
     return res.get("browser_download_url", "")
 
@@ -121,10 +125,14 @@ def main() -> int:
     tag = "v1.0"
     if "--tag" in args:
         tag = args[args.index("--tag") + 1]
-    exe = ROOT / "dist" / "onefile" / "VCDS LogScope.exe"
+
+    assets: list[tuple[Path, str]] = [
+        (ROOT / "dist" / "onefile" / "VCDS LogScope.exe", "VCDS-LogScope.exe"),
+        (ROOT / "dist" / "legacy" / "VCDS LogScope.exe", "VCDS-LogScope-Windows7.exe"),
+        (ROOT / "dist" / "VCDS-LogScope-1.0-portable.zip", "VCDS-LogScope-portable.zip"),
+    ]
     if "--exe" in args:
-        exe = Path(args[args.index("--exe") + 1])
-    zip_path = ROOT / "dist" / f"VCDS-LogScope-1.0-portable.zip"
+        assets = [(Path(args[args.index("--exe") + 1]), "VCDS-LogScope.exe")]
 
     token = get_token()
     user = api(token, "GET", f"{API}/user")
@@ -150,11 +158,11 @@ def main() -> int:
         print(f"Utworzono wydanie: {release.get('html_url')}")
 
     uploaded = []
-    for asset in (exe, zip_path):
-        if asset.exists():
-            uploaded.append(upload_asset(token, release["id"], asset))
+    for path, name in assets:
+        if path.exists():
+            uploaded.append(upload_asset(token, release["id"], path, name))
         else:
-            print(f"(pomijam brakujący plik: {asset})")
+            print(f"(pomijam brakujący plik: {path})")
 
     print("\nZałączniki:")
     for url in uploaded:
