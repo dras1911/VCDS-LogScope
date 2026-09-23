@@ -1,0 +1,22 @@
+# Środowisko i narzędzia
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Artefakty budowania
+build/
+dist/
+*.spec
+
+# Logi użytkownika — nie publikujemy danych pojazdu (VCID, numery sterownika)
+/LOG-*.CSV
+/LOG-*.csv
+*.log
+
+# Edytory / system
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
