@@ -5,6 +5,7 @@ dostajesz jeden wykres ze wszystkimi parametrami, przejrzystą tabelę z kolorow
 i możliwość porównania kilku logów między sobą.
 
 **[⬇ Pobierz najnowszą wersję](https://github.com/dras1911/VCDS-LogScope/releases/latest)**
+&nbsp;•&nbsp; **[📋 Historia zmian](CHANGELOG.md)**
 &nbsp;•&nbsp; **[Zgłoś problem lub pomysł](https://github.com/dras1911/VCDS-LogScope/issues)**
 &nbsp;•&nbsp; **[☕ Wspomóż projekt](https://buymeacoffee.com/dras1911)**
 
@@ -94,7 +95,7 @@ kolumny czasu każdej grupy, kolumny binarne oraz pliki złożone z kilku blokó
 Nie. To jeden plik `.exe` — można go trzymać na pendrive'ie i uruchamiać na dowolnym komputerze.
 
 **Czy zadziała na Windows 7?**
-Tak, dla Windows 7/8 przygotowana jest osobna wersja (`VCDS-LogScope-1.0-Windows7.exe`),
+Tak, dla Windows 7/8 przygotowana jest osobna wersja (`VCDS-LogScope-Windows7.exe`),
 zbudowana na starszej bibliotece graficznej.
 
 **Czy moje logi są gdzieś wysyłane?**
