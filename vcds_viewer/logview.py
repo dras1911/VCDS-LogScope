@@ -323,7 +323,7 @@ class LogView(QtWidgets.QWidget):
     # ------------------------------------------------------------- synchronizacja
     def _on_cursor(self, x: float):
         t = x if self.x_mode == X_TIME else self._time_for_rpm(x)
-        rpm = self.log.rpm_at(t) if t is not None else None
+        rpm = self.log.rpm_nearest(t) if t is not None else None
         if t is not None:
             self.table.highlight_time(t, follow=self._follow_table)
         self.cursorMoved.emit(float(t if t is not None else x), float(rpm) if rpm is not None else float("nan"), self)
@@ -340,7 +340,7 @@ class LogView(QtWidgets.QWidget):
     def _secondary_text(self, x: float) -> str:
         """Dodatkowy opis przy etykiecie kursora: obroty (dla osi czasu) lub czas (dla osi RPM)."""
         if self.x_mode == X_TIME:
-            rpm = self.log.rpm_at(x)
+            rpm = self.log.rpm_nearest(x)
             return f"{fmt_num(rpm)} obr/min" if rpm is not None else ""
         t = self._time_for_rpm(x)
         return f"{fmt_num(t, 2)} s" if t is not None else ""

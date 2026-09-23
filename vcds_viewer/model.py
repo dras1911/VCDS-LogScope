@@ -247,11 +247,24 @@ class LogData:
         return np.interp(np.asarray(channel.t, dtype=float), rt, ry)
 
     def rpm_at(self, t: float) -> Optional[float]:
+        """Obroty interpolowane w czasie t (do mapowania osi RPM ↔ czas)."""
         rpm = self.rpm_series()
         if rpm is None:
             return None
         rt, ry = rpm
         return float(np.interp(t, rt, ry))
+
+    def rpm_nearest(self, t: float) -> Optional[float]:
+        """Obroty z najbliższej próbki — ta sama wartość, którą pokazuje dymek przy kursorze."""
+        rpm = self.rpm_series()
+        if rpm is None:
+            return None
+        rt, ry = rpm
+        i = int(np.searchsorted(rt, t))
+        i = min(max(i, 0), len(rt) - 1)
+        if i > 0 and abs(rt[i - 1] - t) <= abs(rt[i] - t):
+            i -= 1
+        return float(ry[i])
 
     # -------------------------------------------------------------- dopasowanie
     def match_index(self) -> dict[tuple, Channel]:

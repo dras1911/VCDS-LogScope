@@ -159,8 +159,9 @@ class MainWindow(QtWidgets.QMainWindow):
         label = QtWidgets.QLabel(
             "Przeciągnij tutaj plik CSV z VCDS\n\n"
             "…albo kliknij „Otwórz log” (Ctrl+O)\n\n"
-            "Obsługiwane są logi z grupami pomiarowymi (Grupa A/B/C) — "
-            "wykres nakładany, tabela z kolorowaniem i porównanie wielu logów."
+            "Obsługiwane są logi z jedną, dwiema lub trzema grupami pomiarowymi\n"
+            "(np. Grupa A: 031, Grupa B: 002, Grupa C: 011) — wykres nakładany,\n"
+            "tabela z kolorowaniem i porównanie wielu logów."
         )
         label.setAlignment(Qt.AlignCenter)
         label.setObjectName("dropzone")

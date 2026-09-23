@@ -648,7 +648,7 @@ class CompareView(QtWidgets.QWidget):
         """Obroty przy osi czasu (na podstawie logu A) albo czas przy osi obrotów."""
         base = self.logs[0]
         if self.x_mode == X_TIME:
-            rpm = base.rpm_at(x)
+            rpm = base.rpm_nearest(x)
             return f"Log {self.tags[0]}: {fmt_num(rpm)} obr/min" if rpm is not None else ""
         series = base.rpm_series()
         if series is None:
