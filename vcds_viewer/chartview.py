@@ -27,7 +27,7 @@ class SeriesSpec:
     y: np.ndarray                  # wartości do rysowania
     style: int = Qt.SolidLine
     width: float = 1.7
-    points: bool = False           # rysuj same punkty (bez łączenia linią)
+    mode: str = "line"             # "line" | "points" | "mean" (średnia po obrotach)
     tag: str = ""                  # np. "Log A" / "Log B" (tryb porównania)
     group: str = ""
     lookup_x: Optional[np.ndarray] = None   # wartości do odczytu pod kursorem (kolejność czasu)
@@ -195,7 +195,7 @@ class LogChart(QtWidgets.QWidget):
         s = _Series(spec)
         color = spec.color
         pen = pg.mkPen(color, width=spec.width, style=spec.style)
-        if spec.points:
+        if spec.mode == "points":
             # Tryb punktowy: przy osi obrotów ta sama wartość obrotów wypada w kilku momentach
             # o różnych pozostałych parametrach, więc linia łączyłaby odległe w czasie próbki
             # i tworzyła zygzaki. Punkty pokazują rzeczywisty rozrzut.
@@ -205,13 +205,19 @@ class LogChart(QtWidgets.QWidget):
                                        pg.mkColor(color).blue(), 190),
                 symbolPen=None, antialias=True,
             )
+        elif spec.mode == "mean":
+            # średnia po przedziałach obrotów — grubsza linia, żeby odróżnić od surowych próbek
+            s.curve = pg.PlotDataItem(
+                pen=pg.mkPen(color, width=spec.width + 1.0, style=spec.style),
+                antialias=True, connect="finite",
+            )
         else:
             s.curve = pg.PlotDataItem(pen=pen, antialias=True, connect="finite")
         # UWAGA: kolejność ma znaczenie — najpierw dodajemy krzywą do wykresu,
         # dopiero potem włączamy clipToView (inaczej pyqtgraph cache'uje zły ViewBox).
         s.curve.setZValue(10)
         self.plot.addItem(s.curve)
-        if not spec.points:
+        if spec.mode != "points":
             s.curve.setClipToView(True)
             s.curve.setDownsampling(auto=True, method="peak")
         s.curve.setData(s.px, self._plotted_y(s))

@@ -352,6 +352,34 @@ class LogData:
         return np.concatenate(xs), np.concatenate(ys)
 
     @staticmethod
+    def mean_by_rpm(x: np.ndarray, y: np.ndarray,
+                    bins: int = 120) -> tuple[np.ndarray, np.ndarray]:
+        """Średnia wartość w przedziałach obrotów — czytelna charakterystyka.
+
+        Przy osi obrotów ten sam parametr ma przy tych samych obrotach różne wartości
+        (kąt zapłonu zależy też od obciążenia), więc linia łącząca surowe próbki tworzy
+        zygzaki. Uśrednienie w przedziałach pokazuje trend: „ile wynosi ten parametr
+        przy danych obrotach”. Przedziały bez próbek zostają puste (przerwa w linii).
+        """
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        mask = np.isfinite(x) & np.isfinite(y)
+        xs, ys = x[mask], y[mask]
+        if len(xs) < 3:
+            return xs, ys
+        lo, hi = float(xs.min()), float(xs.max())
+        if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+            return xs, ys
+        bins = max(8, min(int(bins), max(8, len(xs))))
+        edges = np.linspace(lo, hi, bins + 1)
+        idx = np.clip(np.digitize(xs, edges) - 1, 0, bins - 1)
+        sums = np.bincount(idx, weights=ys, minlength=bins)
+        counts = np.bincount(idx, minlength=bins)
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        mean = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+        return centers, mean
+
+    @staticmethod
     def _gap_limit(t: np.ndarray) -> float:
         """Próg przerwy czasowej: powyżej niego łączymy próbki z odległych momentów."""
         if len(t) < 3:

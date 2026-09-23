@@ -19,7 +19,8 @@ from vcds_viewer.qt import QtWidgets  # noqa: E402
 
 
 def main() -> int:
-    log = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "LOG-01-031-002-011-V10.CSV")
+    files = [a for a in sys.argv[1:] if a.lower().endswith((".csv", ".txt"))]
+    log = files[0] if files else str(ROOT / "LOG-01-031-002-011-V10.CSV")
     app = QtWidgets.QApplication(sys.argv[:1])
     win = MainWindow()
     win.resize(1660, 1040)
@@ -29,10 +30,11 @@ def main() -> int:
     QtWidgets.QApplication.processEvents()
     view.cmb_x.setCurrentIndex(1)                 # oś obrotów
     QtWidgets.QApplication.processEvents()
-    view.cmb_draw.setCurrentIndex(0)              # Linia (jak na zrzucie użytkownika)
+    mode = "mean" if "--mean" in sys.argv else ("points" if "--points" in sys.argv else 0)
+    view.cmb_draw.setCurrentIndex({"mean": 2, "points": 1}.get(mode, 0))
     QtWidgets.QApplication.processEvents()
-    # zostawiamy tylko obciążenie i przepływ — dwa parametry, łatwiej ocenić pętle
-    keep = ("obciążenie", "przepływu")
+    # zostawiamy tylko dwa parametry jak w zgłoszeniu użytkownika
+    keep = ("temperatura #2", "zapłonu") if "--two" in sys.argv else ("obciążenie", "przepływu")
     for i in range(view.panel.list.count()):
         item = view.panel.list.item(i)
         sid = str(item.data(0x0100))          # Qt.UserRole
@@ -45,12 +47,13 @@ def main() -> int:
     win.grab()
     QtWidgets.QApplication.processEvents()
 
-    out = ROOT / "build" / "shots" / "50_obroty_linia.png"
+    out = ROOT / "build" / "shots" / f"50_obroty_{mode}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     win.grab().save(str(out))
     print(f"zapisano: {out}")
     print("serie na wykresie:", [s.spec.short for s in view.chart.visible_series()])
     win.close()
+    app.quit()
     return 0
 
 

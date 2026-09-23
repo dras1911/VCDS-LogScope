@@ -10,6 +10,7 @@ from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 from .bandview import BandsChart
 from .chartview import LogChart, SeriesSpec
 from .colors import color_map
+from .flowlayout import FlowLayout
 from .formatting import fmt_num, fmt_time
 from .model import X_RPM, X_TIME, Channel, LogData
 from .tableview import LogTable
@@ -201,15 +202,13 @@ class LogView(QtWidgets.QWidget):
     # ---------------------------------------------------------------- toolbar
     def _build_toolbar(self):
         tb = QtWidgets.QWidget(self)
-        lay = QtWidgets.QHBoxLayout(tb)
-        lay.setContentsMargins(4, 2, 4, 0)
-        lay.setSpacing(8)
+        lay = FlowLayout(tb, margin=4, spacing=8)
 
         lay.addWidget(QtWidgets.QLabel("Widok:"))
         self.cmb_view = QtWidgets.QComboBox()
         self.cmb_view.addItem("Nakładany", "overlay")
         self.cmb_view.addItem("Pasma", "bands")
-        self.cmb_view.setFixedWidth(130)
+        self.cmb_view.setFixedWidth(118)
         self.cmb_view.setToolTip(
             "Nakładany — wszystkie serie na jednym wykresie, wspólna skala.\n"
             "Pasma — każdy parametr w osobnym pasie z własną skalą i wspólnym kursorem.\n"
@@ -222,11 +221,11 @@ class LogView(QtWidgets.QWidget):
         self.cmb_x = QtWidgets.QComboBox()
         self.cmb_x.addItem("Czas [s]", X_TIME)
         self.cmb_x.addItem("Obroty [obr/min]", X_RPM)
-        self.cmb_x.setFixedWidth(160)
+        self.cmb_x.setFixedWidth(150)
         self.cmb_x.currentIndexChanged.connect(self._on_x_mode)
         lay.addWidget(self.cmb_x)
 
-        self.chk_sweeps = QtWidgets.QCheckBox("Dziel na przebiegi")
+        self.chk_sweeps = QtWidgets.QCheckBox("Przebiegi")
         self.chk_sweeps.setChecked(True)
         self.chk_sweeps.setToolTip(
             "Przy osi obrotów: dzieli dane w miejscach, gdzie obroty zawracają (np. koniec\n"
@@ -237,7 +236,7 @@ class LogView(QtWidgets.QWidget):
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
         lay.addWidget(self.chk_sweeps)
 
-        self.chk_norm = QtWidgets.QCheckBox("Normalizuj 0–100%")
+        self.chk_norm = QtWidgets.QCheckBox("Normalizuj")
         self.chk_norm.setToolTip(
             "Przeskalowuje każdą serię do jej własnego zakresu (0–100%).\n"
             "Dzięki temu widać kształty wszystkich parametrów, mimo że obroty mają\n"
@@ -250,28 +249,27 @@ class LogView(QtWidgets.QWidget):
         self.cmb_draw = QtWidgets.QComboBox()
         self.cmb_draw.addItem("Linia", "line")
         self.cmb_draw.addItem("Punkty", "points")
-        self.cmb_draw.setFixedWidth(105)
+        self.cmb_draw.addItem("Średnia", "mean")
+        self.cmb_draw.setFixedWidth(112)
         self.cmb_draw.setToolTip(
-            "Linia łączy kolejne próbki — dobra dla osi czasu.\n"
-            "Punkty rysują każdą próbkę osobno — właściwe dla osi obrotów, bo przy tych\n"
-            "samych obrotach różne momenty mają różne wartości i linia tworzyłaby zygzaki."
+            "Linia — łączy kolejne próbki (dla osi czasu).\n"
+            "Punkty — każda próbka osobno; przy osi obrotów pokazuje rzeczywisty rozrzut.\n"
+            "Średnia — uśrednia wartości w przedziałach obrotów; daje gładką charakterystykę\n"
+            "„ile parametr wynosi przy danych obrotach”, bez zygzaków. Tylko dla osi obrotów."
         )
         self.cmb_draw.activated.connect(lambda _i=0: setattr(self, "_draw_touched", True))
         self.cmb_draw.currentIndexChanged.connect(lambda _i=0: self.rebuild_series())
         lay.addWidget(self.cmb_draw)
+        self._enable_mean_item(False)      # na starcie oś czasu — średnia po obrotach zbędna
 
-        self.lbl_hint = QtWidgets.QLabel("")
-        self.lbl_hint.setObjectName("hint")
-        self.lbl_hint.setWordWrap(False)
-        self.lbl_hint.setVisible(False)
-
-        self.chk_snap = QtWidgets.QCheckBox("Przyciągaj do próbek")
+        self.chk_snap = QtWidgets.QCheckBox("Przyciągaj")
         self.chk_snap.setChecked(True)
+        self.chk_snap.setToolTip("Kursor zatrzymuje się na najbliższej próbce zamiast między nimi.")
         self.chk_snap.toggled.connect(self.chart.set_snap)
         self.chk_snap.toggled.connect(self.bands.set_snap)
         lay.addWidget(self.chk_snap)
 
-        self.chk_follow = QtWidgets.QCheckBox("Tabela podąża za kursorem")
+        self.chk_follow = QtWidgets.QCheckBox("Tabela za kursorem")
         self.chk_follow.setChecked(True)
         self.chk_follow.setToolTip(
             "Przewijanie tabeli razem z kursorem wykresu.\n"
@@ -280,8 +278,6 @@ class LogView(QtWidgets.QWidget):
         )
         self.chk_follow.toggled.connect(lambda v: setattr(self, "_follow_table", v))
         lay.addWidget(self.chk_follow)
-
-        lay.addStretch(1)
 
         for text, tip, slot in (
             ("Dopasuj", "Dopasuj widok do całego logu (dwuklik na wykresie)", self._fit_active),
@@ -297,15 +293,24 @@ class LogView(QtWidgets.QWidget):
 
         self.chart_toolbar = tb
 
+        self.lbl_hint = QtWidgets.QLabel("")
+        self.lbl_hint.setObjectName("hint")
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setVisible(False)
+
     # ------------------------------------------------------------------ serie
     def rebuild_series(self):
         specs: list[SeriesSpec] = []
         split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
-        points = self.cmb_draw.currentData() == "points"
+        mode = self.cmb_draw.currentData() or "line"
         for ch in self.log.channels:
             if not ch.has_data:
                 continue
             x, y = self.log.plot_xy(ch, self.x_mode, split_sweeps=split)
+            lookup_x = self.log.x_for(ch, self.x_mode)
+            if mode == "mean" and self.x_mode == X_RPM:
+                # gładka charakterystyka: średnia w przedziałach obrotów
+                x, y = LogData.mean_by_rpm(lookup_x, ch.y)
             specs.append(
                 SeriesSpec(
                     sid=sid_for(ch),
@@ -316,9 +321,9 @@ class LogView(QtWidgets.QWidget):
                     x=x,
                     y=y,
                     group=ch.group,
-                    lookup_x=self.log.x_for(ch, self.x_mode),
+                    lookup_x=lookup_x,
                     lookup_y=ch.y,
-                    points=points,
+                    mode=mode,
                 )
             )
         self.chart.set_x_axis(
@@ -391,10 +396,15 @@ class LogView(QtWidgets.QWidget):
         if self.x_mode == X_RPM:
             segments = self.log.rpm_segments()
             points = self.cmb_draw.currentData() == "points"
-            if points:
+            mean = self.cmb_draw.currentData() == "mean"
+            if mean:
+                text = ("Oś X = obroty: linia pokazuje średnią wartość w przedziałach obrotów — "
+                        "gładką charakterystykę bez skoków. Przełącz „Rysowanie: Punkty”, aby "
+                        "zobaczyć rozrzut surowych próbek.")
+            elif points:
                 text = ("Oś X = obroty: każda próbka to osobny punkt. Przy tych samych obrotach różne "
                         "momenty mają różne wartości, więc linia tworzyłaby zygzaki — włącz "
-                        "„Rysowanie: Linia”, aby zobaczyć przebiegi.")
+                        "„Rysowanie: Średnia”, aby zobaczyć gładką charakterystykę.")
                 if len(segments) > 1:
                     text += f" Danych jest {len(segments)} przebiegów."
             elif len(segments) > 1:
@@ -448,10 +458,19 @@ class LogView(QtWidgets.QWidget):
         else:
             self._set_rpm_visible(True)
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        self._enable_mean_item(self.x_mode == X_RPM)
         if not self._draw_touched:
             # przy obrotach domyślnie punkty — linia tworzyłaby zygzaki
             self.cmb_draw.setCurrentIndex(1 if self.x_mode == X_RPM else 0)
+        elif self.cmb_draw.currentData() == "mean" and self.x_mode != X_RPM:
+            self.cmb_draw.setCurrentIndex(0)
         self.rebuild_series()
+
+    def _enable_mean_item(self, on: bool):
+        """„Średnia po obrotach” ma sens tylko przy osi obrotów."""
+        item = self.cmb_draw.model().item(2)
+        if item is not None:
+            item.setEnabled(on)
 
     def _set_rpm_visible(self, visible: bool):
         """Włącza/wyłącza kanały obrotów w panelu (przy osi X = obroty są zbędne)."""

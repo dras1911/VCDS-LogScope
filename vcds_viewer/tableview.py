@@ -9,6 +9,7 @@ import numpy as np
 from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal, exec_menu
 
 from .colors import color_map
+from .flowlayout import FlowLayout
 from .formatting import fmt_num, fmt_time
 from .model import Channel, LogData
 from .theme import Theme
@@ -284,6 +285,22 @@ class LogTableModel(QtCore.QAbstractTableModel):
         return i
 
 
+def fit_column_widths(view: QtWidgets.QTableView, desired: list[int],
+                      floors: list[int]) -> list[int]:
+    """Dopasowuje szerokości kolumn do szerokości widoku (dla małych ekranów).
+
+    Gdy pożądane szerokości nie mieszczą się w oknie, są zwężane proporcjonalnie —
+    ale nie poniżej wartości minimalnych, przy których liczby przestałyby się mieścić.
+    """
+    avail = max(200, view.viewport().width() - 4)
+    total = sum(desired)
+    if total <= avail:
+        return desired
+    slack = max(1, total - sum(floors))
+    k = max(0.0, min(1.0, (avail - sum(floors)) / slack))
+    return [max(f, int(round(d * k))) for d, f in zip(desired, floors)]
+
+
 class HeatCellDelegate(QtWidgets.QStyledItemDelegate):
     """Rysuje wartość oraz kolorową strzałkę zmiany (zielona ▲ / czerwona ▼)."""
 
@@ -420,10 +437,9 @@ class LogTable(QtWidgets.QWidget):
         lay.addWidget(self.view)
         self._apply_sizes()
 
-    def _toolbar(self) -> QtWidgets.QHBoxLayout:
-        bar = QtWidgets.QHBoxLayout()
-        bar.setContentsMargins(6, 4, 6, 0)
-        self.chk_heat = QtWidgets.QCheckBox("Kolorowanie narastające")
+    def _toolbar(self) -> QtWidgets.QLayout:
+        bar = FlowLayout(margin=6, spacing=8)
+        self.chk_heat = QtWidgets.QCheckBox("Kolorowanie")
         self.chk_heat.setChecked(True)
         self.chk_heat.setToolTip("Koloruje komórki wg wartości — im wyższa, tym mocniejszy kolor")
         self.chk_heat.toggled.connect(self.model.set_heatmap)
@@ -445,30 +461,52 @@ class LogTable(QtWidgets.QWidget):
             ("Niebieska", "#2f6fed"),
             ("Pomarańczowa", "#e8871e"),
             ("Fioletowa", "#8b5cf6"),
-            ("Tęczowa (niebieski→czerwony)", "rainbow"),
+            ("Tęczowa", "rainbow"),
         ):
             self.cmb_color.addItem(name, color)
         self.cmb_color.currentIndexChanged.connect(
             lambda: self.model.set_heatmap_color(self.cmb_color.currentData())
         )
-        self.cmb_color.setToolTip("Skala kolorów heatmapy")
+        self.cmb_color.setToolTip("Skala kolorów heatmapy (Tęczowa: niebieski → czerwony)")
+        self.cmb_color.setFixedWidth(118)
 
         bar.addWidget(self.chk_heat)
         bar.addWidget(self.cmb_color)
         bar.addWidget(self.chk_delta)
         bar.addWidget(legend)
-        bar.addStretch(1)
         return bar
+
+    def _desired_width(self, col) -> int:
+        if col.group == "":
+            return 46
+        if col.is_time:
+            return 78
+        return max(92, min(150, 9 * len(col.title) + 34))
 
     def _apply_sizes(self):
         cols = self.model.columns
         for i, col in enumerate(cols):
-            if col.group == "":
-                self.view.setColumnWidth(i, 46)
-            elif col.is_time:
-                self.view.setColumnWidth(i, 78)
-            else:
-                self.view.setColumnWidth(i, max(92, min(150, 9 * len(col.title) + 34)))
+            self.view.setColumnWidth(i, self._desired_width(col))
+        self._fit_columns()
+
+    def _fit_columns(self):
+        """Zwęża kolumny tak, żeby na małym ekranie jak najwięcej zmieściło się bez przewijania.
+
+        Na szerokim ekranie kolumny dostają wygodne szerokości; gdy brakuje miejsca
+        (typowy laptop warsztatowy 1366 px), są zwężane proporcjonalnie — do wartości
+        minimalnych, poniżej których liczby przestałyby się mieścić.
+        """
+        cols = self.model.columns
+        if not cols:
+            return
+        desired = [self._desired_width(c) for c in cols]
+        floors = [40 if c.group == "" else (58 if c.is_time else 64) for c in cols]
+        for i, w in enumerate(fit_column_widths(self.view, desired, floors)):
+            self.view.setColumnWidth(i, w)
+
+    def resizeEvent(self, event):  # noqa: N802 (API Qt)
+        super().resizeEvent(event)
+        self._fit_columns()
 
     # ------------------------------------------------------------------- akcje
     def set_theme(self, theme: Theme):

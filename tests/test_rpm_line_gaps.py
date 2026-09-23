@@ -113,3 +113,34 @@ def test_time_mode_is_untouched(log):
     x, y = log.plot_xy(channel, "time", split_sweeps=True)
     assert len(x) == len(np.asarray(channel.t, dtype=float))
     assert not np.isnan(y).any()
+
+
+def test_mean_by_rpm_smooths_scatter():
+    """Średnia w przedziałach obrotów wygładza rozrzut i trzyma się trendu."""
+    rng = np.random.default_rng(0)
+    x = np.linspace(1000.0, 6000.0, 500)
+    y = x / 1000.0 + rng.normal(0.0, 5.0, 500)
+    mx, my = LogData.mean_by_rpm(x, y, bins=50)
+    assert len(mx) == 50
+    ok = np.isfinite(my)
+    assert ok.sum() > 40
+    trend = mx[ok] / 1000.0
+    # średnie leżą znacznie bliżej trendu niż surowe próbki
+    raw_dev = np.max(np.abs(y - x / 1000.0))
+    mean_dev = np.max(np.abs(my[ok] - trend))
+    assert mean_dev < raw_dev * 0.6, (mean_dev, raw_dev)
+    # i są znacznie łagodniejsze niż surowe próbki
+    assert np.max(np.abs(np.diff(my[ok]))) < np.max(np.abs(np.diff(y)))
+
+
+def test_mean_by_rpm_on_real_log_has_no_spikes(log):
+    """Na prawdziwym logu średnia nie ma już skoków rzędu całego zakresu."""
+    channel = log.find((("kąt w.zapłonu"), ("°pgmp"), 0))
+    x = np.asarray(log.x_for(channel, X_RPM), dtype=float)
+    y = np.asarray(channel.y, dtype=float)
+    mx, my = LogData.mean_by_rpm(x, y, bins=60)
+    ok = np.isfinite(my)
+    assert ok.sum() > 10
+    raw_span = float(np.nanmax(y) - np.nanmin(y))
+    mean_span = float(np.nanmax(my[ok]) - np.nanmin(my[ok]))
+    assert mean_span < raw_span * 0.8, "średnia powinna być węższa niż surowe dane"

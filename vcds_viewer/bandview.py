@@ -135,7 +135,7 @@ class BandsChart(QtWidgets.QWidget):
         plot.getAxis("left").setWidth(64)
         plot.setTitle(self._title(spec), color=self.theme.text_dim, size="10pt")
 
-        if spec.points:
+        if spec.mode == "points":
             curve = pg.PlotDataItem(
                 pen=None, symbol="o", symbolSize=5.0,
                 symbolBrush=pg.mkBrush(pg.mkColor(spec.color).red(),
@@ -143,12 +143,16 @@ class BandsChart(QtWidgets.QWidget):
                                        pg.mkColor(spec.color).blue(), 190),
                 symbolPen=None, antialias=True,
             )
+        elif spec.mode == "mean":
+            curve = pg.PlotDataItem(pen=pg.mkPen(spec.color, width=spec.width + 1.0,
+                                                 style=spec.style),
+                                    antialias=True, connect="finite")
         else:
             curve = pg.PlotDataItem(pen=pg.mkPen(spec.color, width=spec.width, style=spec.style),
                                     antialias=True, connect="finite")
         curve.setZValue(10)
         plot.addItem(curve)
-        if not spec.points:
+        if spec.mode != "points":
             curve.setClipToView(True)
             curve.setDownsampling(auto=True, method="peak")
         curve.setData(lane.spec.x, lane.spec.y)

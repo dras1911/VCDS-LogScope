@@ -10,8 +10,10 @@ from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .chartview import LogChart, SeriesSpec
 from .colors import color_for, color_map
+from .flowlayout import FlowLayout
 from .formatting import fmt_delta, fmt_num, fmt_time
 from .model import X_RPM, X_TIME, LogData
+from .tableview import fit_column_widths
 from .theme import Theme
 
 # Style linii dla kolejnych logów (log A ciągła, log B przerywana, ...).
@@ -242,7 +244,7 @@ class CompareView(QtWidgets.QWidget):
         body = QtWidgets.QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
-        self.panel.setFixedWidth(300)
+        self.panel.setFixedWidth(272)
         body.addWidget(self.panel)
         body.addWidget(self.tabs, 1)
 
@@ -292,9 +294,7 @@ class CompareView(QtWidgets.QWidget):
     # ---------------------------------------------------------------- elementy
     def _build_toolbar(self) -> QtWidgets.QWidget:
         tb = QtWidgets.QWidget(self)
-        lay = QtWidgets.QHBoxLayout(tb)
-        lay.setContentsMargins(4, 2, 4, 0)
-        lay.setSpacing(8)
+        lay = FlowLayout(tb, margin=4, spacing=8)
 
         lay.addWidget(QtWidgets.QLabel("Oś X:"))
         self.cmb_x = QtWidgets.QComboBox()
@@ -304,7 +304,7 @@ class CompareView(QtWidgets.QWidget):
         self.cmb_x.currentIndexChanged.connect(self._on_x_mode)
         lay.addWidget(self.cmb_x)
 
-        self.chk_norm = QtWidgets.QCheckBox("Normalizuj 0–100%")
+        self.chk_norm = QtWidgets.QCheckBox("Normalizuj")
         self.chk_norm.setToolTip(
             "Przeskalowuje każdą serię do jej własnego zakresu — pozwala porównać kształty\n"
             "parametrów o bardzo różnych wartościach. Wartości w dymku pozostają rzeczywiste."
@@ -312,7 +312,7 @@ class CompareView(QtWidgets.QWidget):
         self.chk_norm.toggled.connect(self._on_normalize)
         lay.addWidget(self.chk_norm)
 
-        self.chk_sweeps = QtWidgets.QCheckBox("Dziel na przebiegi")
+        self.chk_sweeps = QtWidgets.QCheckBox("Przebiegi")
         self.chk_sweeps.setChecked(True)
         self.chk_sweeps.setToolTip(
             "Przy osi obrotów: dzieli dane w miejscach zawrotu obrotów i rysuje każdy przebieg\n"
@@ -326,15 +326,18 @@ class CompareView(QtWidgets.QWidget):
         self.cmb_draw = QtWidgets.QComboBox()
         self.cmb_draw.addItem("Linia", "line")
         self.cmb_draw.addItem("Punkty", "points")
-        self.cmb_draw.setFixedWidth(105)
+        self.cmb_draw.addItem("Średnia", "mean")
+        self.cmb_draw.setFixedWidth(120)
         self.cmb_draw.setToolTip(
-            "Linia łączy kolejne próbki — dobra dla osi czasu.\n"
-            "Punkty rysują każdą próbkę osobno — właściwe dla osi obrotów, bo przy tych\n"
-            "samych obrotach różne momenty mają różne wartości i linia tworzyłaby zygzaki."
+            "Linia — łączy kolejne próbki (dla osi czasu).\n"
+            "Punkty — każda próbka osobno; przy osi obrotów pokazuje rzeczywisty rozrzut.\n"
+            "Średnia — uśrednia wartości w przedziałach obrotów; daje gładką charakterystykę\n"
+            "„ile parametr wynosi przy danych obrotach”, bez zygzaków. Tylko dla osi obrotów."
         )
         self.cmb_draw.activated.connect(lambda _i=0: setattr(self, "_draw_touched", True))
         self.cmb_draw.currentIndexChanged.connect(lambda _i=0: self.refresh())
         lay.addWidget(self.cmb_draw)
+        self._enable_mean_item(False)
 
         self.lbl_hint = QtWidgets.QLabel("")
         self.lbl_hint.setObjectName("hint")
@@ -352,7 +355,6 @@ class CompareView(QtWidgets.QWidget):
         self.spin_offset.valueChanged.connect(self._on_offset)
         lay.addWidget(self.spin_offset)
 
-        lay.addStretch(1)
         for text, tip, slot in (
             ("Dopasuj", "Dopasuj widok do danych", self.chart.fit),
             ("−", "Pomniejsz", lambda: self.chart.zoom(1.25)),
@@ -547,7 +549,7 @@ class CompareView(QtWidgets.QWidget):
 
         # --- wykres
         split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
-        points = self.cmb_draw.currentData() == "points"
+        mode = self.cmb_draw.currentData() or "line"
         specs: list[SeriesSpec] = []
         for prm in self.params:
             if not self.param_checks.get(prm.key, True):
@@ -563,6 +565,8 @@ class CompareView(QtWidgets.QWidget):
                 offset = self.offset_b if (i == 1 and self.x_mode == X_TIME) else 0.0
                 x, y = log.plot_xy(ch, self.x_mode, split_sweeps=split)
                 lookup_x = log.x_for(ch, self.x_mode)
+                if mode == "mean" and self.x_mode == X_RPM:
+                    x, y = LogData.mean_by_rpm(lookup_x, ch.y)
                 if offset:
                     x = np.asarray(x, dtype=float) + offset
                     lookup_x = np.asarray(lookup_x, dtype=float) + offset
@@ -581,7 +585,7 @@ class CompareView(QtWidgets.QWidget):
                         group=ch.group,
                         lookup_x=lookup_x,
                         lookup_y=ch.y,
-                        points=points,
+                        mode=mode,
                     )
                 )
         self.chart.set_x_axis(
@@ -594,10 +598,7 @@ class CompareView(QtWidgets.QWidget):
         # --- tabela różnic
         active = [p for p in self.params if self.param_checks.get(p.key, True)]
         self.model.set_data(self.grid, active, [self.tags[i] for i in range(len(self.logs))])
-        fm = self.table.fontMetrics()
-        for c in range(self.model.columnCount()):
-            w = fm.horizontalAdvance(self.model.headerText(c)) + 28
-            self.table.setColumnWidth(c, max(84, min(w, 300)))
+        self._fit_diff_columns()
 
         self._fill_stats(active)
         self._check_scales()
@@ -679,10 +680,20 @@ class CompareView(QtWidgets.QWidget):
 
     def _on_show_b_values(self, checked: bool):
         self.model.set_show_b_values(checked)
+        self._fit_diff_columns()
+
+    def _fit_diff_columns(self):
+        """Szerokości kolumn tabeli różnic dopasowane do okna (małe ekrany)."""
         fm = self.table.fontMetrics()
-        for c in range(self.model.columnCount()):
-            w = fm.horizontalAdvance(self.model.headerText(c)) + 28
-            self.table.setColumnWidth(c, max(84, min(w, 300)))
+        desired = [max(84, min(fm.horizontalAdvance(self.model.headerText(c)) + 28, 300))
+                   for c in range(self.model.columnCount())]
+        floors = [72] * len(desired)
+        for c, w in enumerate(fit_column_widths(self.table, desired, floors)):
+            self.table.setColumnWidth(c, w)
+
+    def resizeEvent(self, event):  # noqa: N802 (API Qt)
+        super().resizeEvent(event)
+        self._fit_diff_columns()
 
     def _on_normalize(self, on: bool):
         self.chart.set_normalized(on)
@@ -724,10 +735,19 @@ class CompareView(QtWidgets.QWidget):
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        self._enable_mean_item(self.x_mode == X_RPM)
         if not self._draw_touched:
             # przy obrotach domyślnie punkty — linia tworzyłaby zygzaki
             self.cmb_draw.setCurrentIndex(1 if self.x_mode == X_RPM else 0)
+        elif self.cmb_draw.currentData() == "mean" and self.x_mode != X_RPM:
+            self.cmb_draw.setCurrentIndex(0)
         self.refresh()
+
+    def _enable_mean_item(self, on: bool):
+        """„Średnia po obrotach” ma sens tylko przy osi obrotów."""
+        item = self.cmb_draw.model().item(2)
+        if item is not None:
+            item.setEnabled(on)
 
     def _on_offset(self, value: float):
         self.offset_b = float(value)

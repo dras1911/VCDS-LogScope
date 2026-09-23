@@ -3,6 +3,27 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.3 — 23 września 2026
+
+**Nowe**
+
+- **„Rysowanie: Średnia”** — trzeci tryb rysowania dla osi obrotów. Uśrednia wartości
+  w przedziałach obrotów i pokazuje gładką charakterystykę: „ile ten parametr wynosi przy
+  danych obrotach”. Bez zygzaków i pionowych kresek. Tryby do wyboru: **Linia** (surowa,
+  dla osi czasu), **Punkty** (rzeczywisty rozrzut próbek) i **Średnia** (charakterystyka).
+
+**Naprawione**
+
+- **Program mieści się na małym ekranie.** Pasek opcji nad wykresem wymuszał szerokość
+  1727 px, więc na typowym laptopie warsztatowym (1366 × 768) okno nie mieściło się
+  w ekranie i tabela była ucięta. Teraz kontrolki zawijają się do kolejnych linii,
+  a okno da się zwężyć do ~620 px.
+- **Tabela dopasowuje się do szerokości okna.** Kolumny zwężają się proporcjonalnie, więc
+  wszystkie mieszczą się bez przewijania w poziomie; na szerokim ekranie wracają do
+  wygodnych szerokości. To samo dotyczy tabeli różnic w porównaniu logów.
+- **Krótsze etykiety** w paskach opcji („Przebiegi”, „Normalizuj”, „Przyciągaj”,
+  „Tabela za kursorem”, „Kolorowanie”) — pełne wyjaśnienie w podpowiedziach pod kursorem.
+
 ## 1.0.2 — 23 września 2026
 
 **Naprawione**
