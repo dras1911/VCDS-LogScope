@@ -40,15 +40,29 @@ w stylu TuneZilla, tabelę z kolorowaniem narastającym i porównywanie wielu lo
 
 **4. Program na Windows** — przenośna wersja `.exe` (bez instalacji), skrót na pulpicie.
 
+## Dwie wersje do pobrania
+
+| Wersja | Plik | Kiedy wybrać |
+|---|---|---|
+| **Jednoplikowa** (zalecana do pobrania) | `VCDS LogScope.exe` (~70 MB) | jeden plik, nic więcej nie trzeba — wystarczy skopiować i uruchomić |
+| Katalogowa | `VCDS LogScope.exe` + `_internal\` (~152 MB) | szybszy start (bez rozpakowywania do folderu tymczasowego) |
+
+Obie robią dokładnie to samo. Wersja jednoplikowa przy pierwszym uruchomieniu rozpakowuje
+się do katalogu tymczasowego (2–4 s dłużej), za to łatwiej ją przesłać lub skopiować na pendrive'a.
+
 ## Uruchamianie
 
-**Wersja przenośna (zalecana):**
+**Wersja jednoplikowa:**
+```
+dist\onefile\VCDS LogScope.exe
+```
+
+**Wersja katalogowa:**
 ```
 dist\VCDS LogScope\VCDS LogScope.exe
 ```
 albo skrót **VCDS LogScope** na pulpicie (`C:\Users\<użytkownik>\Desktop\VCDS LogScope.lnk`).
-Nic nie jest instalowane w systemie — wystarczy skopiować cały katalog `dist\VCDS LogScope`
-(ok. 152 MB) np. na pendrive'a.
+Nic nie jest instalowane w systemie — wystarczy skopiować plik (albo cały katalog) np. na pendrive'a.
 
 Pliki logów otwierasz przez `Ctrl+O`, albo po prostu **przeciągasz CSV na okno programu**
 (przeciągnięcie kilku plików zaproponuje widok porównania).
