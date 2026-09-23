@@ -41,6 +41,14 @@ def _selftest(argv: list[str]) -> int:
     view.chart.set_cursor_x(20.4, emit=True)
     QtWidgets.QApplication.processEvents()
 
+    # widok pasm: sprawdzamy, że pasy powstają i kursor je obsługuje
+    view.cmb_view.setCurrentIndex(1)
+    QtWidgets.QApplication.processEvents()
+    win.grab()                      # wymusza przeliczenie układu pasm
+    view.bands.set_cursor_x(20.4, emit=True)
+    QtWidgets.QApplication.processEvents()
+    bands = len(view.bands.visible_lanes())
+
     from .compare import CompareView
     from .parser import parse_log
 
@@ -63,14 +71,14 @@ def _selftest(argv: list[str]) -> int:
     rows = len(cmp_view.grid)
     channels = len(view.log.numeric_channels)
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
-                 f"parametry_wspolne={params} siatka={rows}")
-    lines.append("SELFTEST: OK" if ok and channels and params else "SELFTEST: BLAD")
+                 f"parametry_wspolne={params} siatka={rows} pasma={bands}")
+    lines.append("SELFTEST: OK" if ok and channels and params and bands else "SELFTEST: BLAD")
 
     report = out_dir / "selftest_report.txt"
     report.write_text("\n".join(lines), encoding="utf-8")
     if sys.stdout is not None:      # w wersji .exe (--windowed) brak konsoli
         print("\n".join(lines))
-    return 0 if (ok and channels and params) else 1
+    return 0 if (ok and channels and params and bands) else 1
 
 
 def main() -> int:

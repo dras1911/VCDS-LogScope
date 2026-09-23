@@ -7,6 +7,7 @@ from typing import Optional
 import numpy as np
 from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
+from .bandview import BandsChart
 from .chartview import LogChart, SeriesSpec
 from .colors import color_map
 from .formatting import fmt_num, fmt_time
@@ -147,6 +148,10 @@ class LogView(QtWidgets.QWidget):
         self._follow_table = True
 
         self.chart = LogChart(theme, self)
+        self.bands = BandsChart(theme, self)
+        self.view_stack = QtWidgets.QStackedWidget(self)
+        self.view_stack.addWidget(self.chart)
+        self.view_stack.addWidget(self.bands)
         self.table = LogTable(log, theme, self)
         self.panel = SeriesPanel(theme, self)
         self.colors = color_map(log.channels, theme.is_dark)
@@ -160,7 +165,7 @@ class LogView(QtWidgets.QWidget):
         cbl.setSpacing(4)
         cbl.addWidget(self.chart_toolbar)
         cbl.addWidget(self.lbl_hint)
-        cbl.addWidget(self.chart, 1)
+        cbl.addWidget(self.view_stack, 1)
 
         self.splitter = QtWidgets.QSplitter(Qt.Vertical, self)
         self.splitter.addWidget(chart_box)
@@ -181,6 +186,9 @@ class LogView(QtWidgets.QWidget):
         root.addLayout(body)
 
         self.chart.cursorMoved.connect(self._on_cursor)
+        self.bands.cursorMoved.connect(self._on_cursor)
+        self.bands.doubleClicked.connect(self.bands.fit)
+        self.bands.set_secondary_fn(self._secondary_text)
         self.table.rowClicked.connect(self._on_row_clicked)
         self.panel.toggled.connect(self._on_series_toggled)
         self.chart.doubleClicked.connect(self.chart.fit)
@@ -194,6 +202,19 @@ class LogView(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(tb)
         lay.setContentsMargins(4, 2, 4, 0)
         lay.setSpacing(8)
+
+        lay.addWidget(QtWidgets.QLabel("Widok:"))
+        self.cmb_view = QtWidgets.QComboBox()
+        self.cmb_view.addItem("Nakładany", "overlay")
+        self.cmb_view.addItem("Pasma", "bands")
+        self.cmb_view.setFixedWidth(130)
+        self.cmb_view.setToolTip(
+            "Nakładany — wszystkie serie na jednym wykresie (jak w TuneZilla).\n"
+            "Pasma — każdy parametr w osobnym pasie z własną skalą i wspólnym kursorem.\n"
+            "Przy 6+ parametrach pasma są znacznie czytelniejsze."
+        )
+        self.cmb_view.currentIndexChanged.connect(self._on_view_mode)
+        lay.addWidget(self.cmb_view)
 
         lay.addWidget(QtWidgets.QLabel("Oś X:"))
         self.cmb_x = QtWidgets.QComboBox()
@@ -231,6 +252,7 @@ class LogView(QtWidgets.QWidget):
         self.chk_snap = QtWidgets.QCheckBox("Przyciągaj do próbek")
         self.chk_snap.setChecked(True)
         self.chk_snap.toggled.connect(self.chart.set_snap)
+        self.chk_snap.toggled.connect(self.bands.set_snap)
         lay.addWidget(self.chk_snap)
 
         self.chk_follow = QtWidgets.QCheckBox("Tabela podąża za kursorem")
@@ -241,9 +263,9 @@ class LogView(QtWidgets.QWidget):
         lay.addStretch(1)
 
         for text, tip, slot in (
-            ("Dopasuj", "Dopasuj widok do całego logu (dwuklik na wykresie)", self.chart.fit),
-            ("−", "Pomniejsz", lambda: self.chart.zoom(1.25)),
-            ("+", "Powiększ", lambda: self.chart.zoom(0.8)),
+            ("Dopasuj", "Dopasuj widok do całego logu (dwuklik na wykresie)", self._fit_active),
+            ("−", "Pomniejsz", lambda: self._zoom_active(1.25)),
+            ("+", "Powiększ", lambda: self._zoom_active(0.8)),
             ("PNG", "Zapisz wykres jako obraz PNG", self._export_png),
         ):
             b = QtWidgets.QPushButton(text)
@@ -282,6 +304,14 @@ class LogView(QtWidgets.QWidget):
             "Obroty silnika" if self.x_mode == X_RPM else "Czas",
         )
         self.chart.set_series(specs)
+        self.bands.set_x_axis(
+            self.x_mode,
+            "obr/min" if self.x_mode == X_RPM else "s",
+            "Obroty silnika" if self.x_mode == X_RPM else "Czas",
+        )
+        self.bands.set_series(specs)
+        if self.chart.cursor_x() is not None:
+            self.bands.set_cursor_x(self.chart.cursor_x(), emit=False)
         self._sync_panel_checks()
         self._check_scales()
 
@@ -290,7 +320,44 @@ class LogView(QtWidgets.QWidget):
             item = self.panel.list.item(i)
             sid = item.data(Qt.UserRole)
             if sid:
-                self.chart.set_series_visible(str(sid), item.checkState() == Qt.Checked)
+                visible = item.checkState() == Qt.Checked
+                self.chart.set_series_visible(str(sid), visible)
+                self.bands.set_series_visible(str(sid), visible)
+
+    def _on_view_mode(self):
+        """Przełączenie widoku: nakładany <-> pasma."""
+        bands = self.cmb_view.currentData() == "bands"
+        self.view_stack.setCurrentWidget(self.bands if bands else self.chart)
+        self.chk_norm.setEnabled(not bands)
+        self.chk_norm.setToolTip(
+            "W widoku pasm każdy parametr ma własną skalę, więc normalizacja nie jest potrzebna."
+            if bands else
+            "Przeskalowuje każdą serię do jej własnego zakresu (0–100%).\n"
+            "Dzięki temu widać kształty wszystkich parametrów, mimo że obroty mają\n"
+            "zakres 0–6000, a np. temperatura 80–90. Wartości w dymku pozostają rzeczywiste."
+        )
+        if self.chart.cursor_x() is not None:
+            self.bands.set_cursor_x(self.chart.cursor_x(), emit=False)
+        self.bands.fit() if bands else self.chart.fit()
+        self._check_scales()
+
+    def _active_view(self):
+        return self.bands if self.cmb_view.currentData() == "bands" else self.chart
+
+    def _fit_active(self):
+        self._active_view().fit()
+
+    def _zoom_active(self, factor: float):
+        self._active_view().zoom(factor)
+
+    def _export_active(self):
+        view = self._active_view()
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Zapisz wykres jako PNG", "wykres.png", "Obraz PNG (*.png)"
+        )
+        if path:
+            if not view.export_png(path):
+                QtWidgets.QMessageBox.warning(self, "Eksport", "Nie udało się zapisać obrazu.")
 
     def _on_normalize(self, on: bool):
         self.chart.set_normalized(on)
@@ -317,6 +384,17 @@ class LogView(QtWidgets.QWidget):
             return
         spans.sort()
         ratio = spans[-1] / max(spans[0], 1e-9)
+        if self.cmb_view.currentData() == "bands":
+            self._set_hint("")
+            return
+        visible = sum(1 for i in range(self.panel.list.count())
+                      if self.panel.list.item(i).checkState() == Qt.Checked)
+        if visible >= 6 and ratio > 25:
+            self._set_hint(
+                f"Widok nakładany z {visible} seriami o bardzo różnych zakresach bywa nieczytelny — "
+                "przełącz „Widok: Pasma” albo włącz „Normalizuj 0–100%”."
+            )
+            return
         self._set_hint(
             "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
             "aby widzieć kształt każdej serii"
@@ -329,6 +407,7 @@ class LogView(QtWidgets.QWidget):
 
     def _on_series_toggled(self, sid: str, checked: bool):
         self.chart.set_series_visible(sid, checked)
+        self.bands.set_series_visible(sid, checked)
 
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
@@ -360,11 +439,18 @@ class LogView(QtWidgets.QWidget):
             return
         if not path.lower().endswith(".png"):
             path += ".png"
-        ok = self.chart.export_png(path)
+        ok = self._active_view().export_png(path)
         QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), "Zapisano" if ok else "Nie udało się zapisać")
 
     # ------------------------------------------------------------- synchronizacja
     def _on_cursor(self, x: float):
+        # kursor jest wspólny dla obu widoków — przełączenie nie gubi pozycji
+        source = self.sender()
+        target = self.bands if source is self.chart else self.chart
+        try:
+            target.set_cursor_x(x, emit=False, snap=False)
+        except TypeError:
+            target.set_cursor_x(x, emit=False)
         t = x if self.x_mode == X_TIME else self._time_for_rpm(x)
         rpm = self.log.rpm_nearest(t) if t is not None else None
         if t is not None:
@@ -406,6 +492,7 @@ class LogView(QtWidgets.QWidget):
         self.theme = theme
         self.colors = color_map(self.log.channels, theme.is_dark)
         self.chart.refresh_theme(theme)
+        self.bands.refresh_theme(theme)
         self.table.set_theme(theme)
         self.panel.theme = theme
         self.panel.populate(self.log, self.colors)

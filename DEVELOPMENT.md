@@ -86,6 +86,7 @@ vcds_viewer/
   model.py       # model danych: LogData / Group / Channel, oś X czas|RPM, przebiegi obrotów
   colors.py      # paleta kolorów parametrów + unikalne kolory serii
   chartview.py   # wykres nakładany, kursor, dymek, etykieta przy osi X
+  bandview.py    # widok pasm: jeden parametr = jeden wykres, wspólny kursor
   tableview.py   # tabela: heatmapa, strzałki zmian, nagłówek grupowy
   compare.py     # porównanie logów: nakładka + tabela różnic + statystyki
   logview.py     # widok jednego logu (wykres + panel parametrów + tabela)
