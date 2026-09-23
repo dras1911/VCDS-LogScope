@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .qt import QtCore, QtWidgets
 
-from . import APP_NAME
+from . import APP_NAME, __version__
 from .mainwindow import MainWindow, app_icon
 from .qt import exec_app
 
@@ -70,6 +70,7 @@ def _selftest(argv: list[str]) -> int:
     params = len(cmp_view.params)
     rows = len(cmp_view.grid)
     channels = len(view.log.numeric_channels)
+    lines.append(f"SELFTEST: wersja {__version__}")
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
                  f"parametry_wspolne={params} siatka={rows} pasma={bands}")
     lines.append("SELFTEST: OK" if ok and channels and params and bands else "SELFTEST: BLAD")

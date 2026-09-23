@@ -135,12 +135,22 @@ class BandsChart(QtWidgets.QWidget):
         plot.getAxis("left").setWidth(64)
         plot.setTitle(self._title(spec), color=self.theme.text_dim, size="10pt")
 
-        curve = pg.PlotDataItem(pen=pg.mkPen(spec.color, width=spec.width, style=spec.style),
-                                antialias=True, connect="finite")
+        if spec.points:
+            curve = pg.PlotDataItem(
+                pen=None, symbol="o", symbolSize=5.0,
+                symbolBrush=pg.mkBrush(pg.mkColor(spec.color).red(),
+                                       pg.mkColor(spec.color).green(),
+                                       pg.mkColor(spec.color).blue(), 190),
+                symbolPen=None, antialias=True,
+            )
+        else:
+            curve = pg.PlotDataItem(pen=pg.mkPen(spec.color, width=spec.width, style=spec.style),
+                                    antialias=True, connect="finite")
         curve.setZValue(10)
         plot.addItem(curve)
-        curve.setClipToView(True)
-        curve.setDownsampling(auto=True, method="peak")
+        if not spec.points:
+            curve.setClipToView(True)
+            curve.setDownsampling(auto=True, method="peak")
         curve.setData(lane.spec.x, lane.spec.y)
 
         dots = pg.ScatterPlotItem(size=8, pen=pg.mkPen(spec.color, width=2),

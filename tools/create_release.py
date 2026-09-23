@@ -1,15 +1,22 @@
-"""Tworzy wydanie na GitHubie i wgrywa plik .exe jako załącznik.
+"""Tworzy wydanie na GitHubie (własny numer dla każdej wersji) i wgrywa pliki .exe.
 
-Wykorzystuje poświadczenia zapisane przez Git Credential Manager (nie wypisuje ich nigdzie).
+Numer wersji bierze z `vcds_viewer/__init__.py` — każde wydanie dostaje tag `vX.Y.Z`
+i nowy wpis na liście wydań. Ponowne uruchomienie dla tej samej wersji podmienia
+załączniki (przydatne, gdy build trzeba powtórzyć).
+
+Poświadczenia pobiera z menedżera poświadczeń git (wartości nie są nigdzie wypisywane).
 
 Użycie:
-    .venv/Scripts/python.exe tools/create_release.py [--tag v1.0] [--exe ścieżka] [--dry-run]
+    .venv/Scripts/python.exe tools/create_release.py                  # wersja z pakietu
+    .venv/Scripts/python.exe tools/create_release.py --dry-run        # tylko pokaż, co zrobi
+    .venv/Scripts/python.exe tools/create_release.py --no-tag-push    # nie wypychaj tagu
 """
 
 from __future__ import annotations
 
 import json
 import mimetypes
+import re
 import subprocess
 import sys
 import urllib.error
@@ -22,18 +29,18 @@ REPO = "dras1911/VCDS-LogScope"
 API = "https://api.github.com"
 UPLOADS = "https://uploads.github.com"
 
-NOTES = """## VCDS LogScope 1.0
-
-Czytelne przeglądanie logów z **VCDS / VAG-COM** — program dla Windows, nie wymaga instalacji
+DESCRIPTION = """Czytelne przeglądanie logów z **VCDS / VAG-COM** — program dla Windows, nie wymaga instalacji
 ani internetu. Logi nie są nigdzie wysyłane.
 
 ### Co potrafi
 
-**Wykres ze wszystkimi parametrami naraz**
-- każdy parametr ma własny kolor, więc od razu widać, która linia to obroty, a która obciążenie
+**Wykres ze wszystkimi parametrami naraz** — w dwóch widokach
+- **Nakładany**: wszystkie linie na jednym wykresie (jak w TuneZilla)
+- **Pasma**: każdy parametr w osobnym pasie z własną skalą — czytelny przy dowolnej liczbie parametrów
 - linia kursora z dymkiem: najedź myszą i masz wartości wszystkich parametrów w tym momencie
 - przy osi X wyświetla się **dokładny czas i obroty** w miejscu kursora — nie trzeba niczego zgadywać
-- wykres w funkcji **czasu** albo w funkcji **obrotów**
+- wykres w funkcji **czasu** albo w funkcji **obrotów**; przy obrotach program dzieli dane
+  na przebiegi i domyślnie rysuje punkty, żeby linie nie tworzyły zygzaków
 - „Normalizuj 0–100%”, gdy parametry mają bardzo różne wartości (obroty 0–6000, temperatura 80–90)
 - zoom rolką, przesuwanie, eksport wykresu do PNG
 
@@ -43,6 +50,7 @@ ani internetu. Logi nie są nigdzie wysyłane.
 - wiersz podświetla się razem z kursorem wykresu, kliknięcie w wiersz ustawia kursor
 
 **Porównanie dwóch lub więcej logów** (`Ctrl+T`)
+- wszystkie parametry z obu plików (także te obecne tylko w jednym z nich)
 - log A linią ciągłą, log B przerywaną — te same parametry w tym samym kolorze
 - tabela różnic: ile log B ma więcej lub mniej niż log A w każdym momencie
 - statystyki (min/max/średnia, największa różnica) i przesunięcie czasowe logu B
@@ -51,14 +59,6 @@ ani internetu. Logi nie są nigdzie wysyłane.
 - eksport CSV w wersji polskiej, angielskiej i niemieckiej (Windows-1250/1252, UTF-8)
 - jedna, dwie albo trzy grupy pomiarowe; osobne kolumny czasu każdej grupy
 - automatyczne rozpoznawanie parametrów i jednostek (`/min`, `%`, `ms`, `g/s`, `°C`, `°PGMP`, `mbar`…)
-
-### Pliki do pobrania
-
-| Plik | System |
-|---|---|
-| **`VCDS-LogScope.exe`** | Windows 10 / 11 (64-bit) — zalecana, jeden plik |
-| `VCDS-LogScope-1.0-Windows7.exe` | **Windows 7 / 8 / 8.1** i nowsze — dla starszych laptopów warsztatowych |
-| `VCDS-LogScope-1.0-portable.zip` | Windows 10 / 11 — rozpakowany katalog, startuje szybciej |
 
 ### Szybki start
 
@@ -77,6 +77,67 @@ możesz wesprzeć jego rozwój: **[☕ buymeacoffee.com/dras1911](https://buymea
 
 Autor: **Bartosz Dej** ([@dras1911](https://github.com/dras1911)) • licencja MIT
 """
+
+
+def package_version() -> str:
+    """Czyta wersję z vcds_viewer/__init__.py (bez importowania pakietu)."""
+    text = (ROOT / "vcds_viewer" / "__init__.py").read_text(encoding="utf-8")
+    m = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+    if not m:
+        raise SystemExit("Nie znalazłem __version__ w vcds_viewer/__init__.py")
+    return m.group(1)
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+
+
+def previous_tag(current: str) -> str:
+    """Najbliższy wcześniejszy tag wersji (do listy zmian)."""
+    tags = [t for t in git("tag", "--sort=-v:refname").splitlines() if t.startswith("v")]
+    tags = [t for t in tags if t != current]
+    return tags[0] if tags else ""
+
+
+def changelog(version: str) -> str:
+    """Opis zmian dla wersji: najpierw z CHANGELOG.md, w razie braku z historii gita."""
+    text = ""
+    path = ROOT / "CHANGELOG.md"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    if text:
+        m = re.search(rf"^##\s+{re.escape(version)}\b.*?$(.*?)(?=^##\s|\Z)",
+                      text, re.M | re.S)
+        if m and m.group(1).strip():
+            return f"### Zmiany w wersji {version}\n\n{m.group(1).strip()}\n"
+
+    tag = f"v{version}"
+    prev = previous_tag(tag)
+    rng = f"{prev}..HEAD" if prev else "-15"
+    lines = [l.strip() for l in git("log", "--pretty=format:%s", rng).splitlines() if l.strip()]
+    lines = [l for l in lines if not l.lower().startswith(("wersja ", "release "))]
+    if not lines:
+        return ""
+    body = "\n".join(f"- {l}" for l in lines)
+    header = f"### Zmiany w tej wersji (od {prev})" if prev else "### Zmiany w tej wersji"
+    return f"{header}\n\n{body}\n"
+
+
+def release_notes(version: str) -> str:
+    notes = f"## VCDS LogScope {version}\n\n{DESCRIPTION}"
+    changes = changelog(version)
+    if changes:
+        notes += f"\n{changes}"
+    notes += """
+### Pliki do pobrania
+
+| Plik | System |
+|---|---|
+| **`VCDS-LogScope.exe`** | Windows 10 / 11 (64-bit) — zalecana, jeden plik |
+| `VCDS-LogScope-Windows7.exe` | **Windows 7 / 8 / 8.1** i nowsze — dla starszych laptopów warsztatowych |
+| `VCDS-LogScope-portable.zip` | Windows 10 / 11 — rozpakowany katalog, startuje szybciej |
+"""
+    return notes
 
 
 def get_token() -> str:
@@ -129,17 +190,41 @@ def upload_asset(token: str, release_id: int, path: Path, asset_name: str | None
 
 def main() -> int:
     args = sys.argv[1:]
-    tag = "v1.0"
-    if "--tag" in args:
-        tag = args[args.index("--tag") + 1]
+    dry = "--dry-run" in args
+    version = args[args.index("--version") + 1] if "--version" in args else package_version()
+    tag = args[args.index("--tag") + 1] if "--tag" in args else f"v{version}"
+    push_tag = "--no-tag-push" not in args
 
     assets: list[tuple[Path, str]] = [
         (ROOT / "dist" / "onefile" / "VCDS LogScope.exe", "VCDS-LogScope.exe"),
         (ROOT / "dist" / "legacy" / "VCDS LogScope.exe", "VCDS-LogScope-Windows7.exe"),
-        (ROOT / "dist" / "VCDS-LogScope-1.0-portable.zip", "VCDS-LogScope-portable.zip"),
+        (ROOT / "dist" / "VCDS-LogScope-portable.zip", "VCDS-LogScope-portable.zip"),
     ]
     if "--exe" in args:
         assets = [(Path(args[args.index("--exe") + 1]), "VCDS-LogScope.exe")]
+
+    notes = release_notes(version)
+    missing = [str(p) for p, _ in assets if not p.exists()]
+    print(f"Wersja pakietu: {version}   tag: {tag}")
+    if missing:
+        print("Brakujące pliki (zostaną pominięte):")
+        for m in missing:
+            print("   ", m)
+    if dry:
+        print("\n--- treść wydania ---")
+        print(notes)
+        return 0
+
+    if git("status", "--porcelain"):
+        print("Uwaga: katalog roboczy nie jest czysty — wydanie powstanie z ostatniego commita.")
+
+    # tag na bieżącym commicie (wydanie musi wskazywać konkretny stan kodu)
+    if tag not in git("tag").splitlines():
+        git("tag", "-a", tag, "-m", f"VCDS LogScope {version}")
+        print(f"Utworzono tag {tag}")
+    if push_tag:
+        subprocess.run(["git", "push", "-q", "origin", tag], cwd=ROOT, check=False)
+        print(f"Wypchnięto tag {tag}")
 
     token = get_token()
     user = api(token, "GET", f"{API}/user")
@@ -153,17 +238,14 @@ def main() -> int:
             raise
     if existing:
         print(f"Wydanie {tag} już istnieje: {existing.get('html_url')}")
-        if existing.get("body", "").strip() != NOTES.strip():
-            release = api(token, "PATCH", f"{API}/repos/{REPO}/releases/{existing['id']}",
-                          payload={"body": NOTES})
-            print("Zaktualizowano opis wydania")
-        else:
-            release = existing
+        release = api(token, "PATCH", f"{API}/repos/{REPO}/releases/{existing['id']}",
+                      payload={"body": notes, "name": f"VCDS LogScope {version}"})
+        print("Zaktualizowano opis wydania")
     else:
         release = api(token, "POST", f"{API}/repos/{REPO}/releases", payload={
             "tag_name": tag,
-            "name": f"VCDS LogScope {tag.lstrip('v')}",
-            "body": NOTES,
+            "name": f"VCDS LogScope {version}",
+            "body": notes,
             "draft": False,
             "prerelease": False,
         })
@@ -176,7 +258,8 @@ def main() -> int:
         else:
             print(f"(pomijam brakujący plik: {path})")
 
-    print("\nZałączniki:")
+    print("\nWydanie:", release.get("html_url"))
+    print("Załączniki:")
     for url in uploaded:
         print(" ", url)
     return 0

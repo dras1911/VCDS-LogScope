@@ -147,6 +147,7 @@ class LogView(QtWidgets.QWidget):
         self.x_mode = X_TIME
         self._follow_table = True
         self._cursor_time: Optional[float] = None   # czas kursora, gdy ustawia go tabela
+        self._draw_touched = False                  # czy użytkownik sam wybrał linię/punkty
 
         self.chart = LogChart(theme, self)
         self.bands = BandsChart(theme, self)
@@ -245,6 +246,20 @@ class LogView(QtWidgets.QWidget):
         self.chk_norm.toggled.connect(self._on_normalize)
         lay.addWidget(self.chk_norm)
 
+        lay.addWidget(QtWidgets.QLabel("Rysowanie:"))
+        self.cmb_draw = QtWidgets.QComboBox()
+        self.cmb_draw.addItem("Linia", "line")
+        self.cmb_draw.addItem("Punkty", "points")
+        self.cmb_draw.setFixedWidth(105)
+        self.cmb_draw.setToolTip(
+            "Linia łączy kolejne próbki — dobra dla osi czasu.\n"
+            "Punkty rysują każdą próbkę osobno — właściwe dla osi obrotów, bo przy tych\n"
+            "samych obrotach różne momenty mają różne wartości i linia tworzyłaby zygzaki."
+        )
+        self.cmb_draw.activated.connect(lambda _i=0: setattr(self, "_draw_touched", True))
+        self.cmb_draw.currentIndexChanged.connect(lambda _i=0: self.rebuild_series())
+        lay.addWidget(self.cmb_draw)
+
         self.lbl_hint = QtWidgets.QLabel("")
         self.lbl_hint.setObjectName("hint")
         self.lbl_hint.setWordWrap(False)
@@ -286,6 +301,7 @@ class LogView(QtWidgets.QWidget):
     def rebuild_series(self):
         specs: list[SeriesSpec] = []
         split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
+        points = self.cmb_draw.currentData() == "points"
         for ch in self.log.channels:
             if not ch.has_data:
                 continue
@@ -302,6 +318,7 @@ class LogView(QtWidgets.QWidget):
                     group=ch.group,
                     lookup_x=self.log.x_for(ch, self.x_mode),
                     lookup_y=ch.y,
+                    points=points,
                 )
             )
         self.chart.set_x_axis(
@@ -424,6 +441,9 @@ class LogView(QtWidgets.QWidget):
         else:
             self._set_rpm_visible(True)
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        if not self._draw_touched:
+            # przy obrotach domyślnie punkty — linia tworzyłaby zygzaki
+            self.cmb_draw.setCurrentIndex(1 if self.x_mode == X_RPM else 0)
         self.rebuild_series()
 
     def _set_rpm_visible(self, visible: bool):

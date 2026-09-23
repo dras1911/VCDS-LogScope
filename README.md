@@ -62,8 +62,10 @@ bez płatnego certyfikatu podpisu.
 | Plik | System | Uwagi |
 |---|---|---|
 | `VCDS-LogScope.exe` | Windows 10 / 11 (64-bit) | zalecana, jeden plik |
-| `VCDS-LogScope-1.0-Windows7.exe` | **Windows 7 / 8 / 8.1** i nowsze | dla starszych laptopów warsztatowych |
-| `VCDS-LogScope-1.0-portable.zip` | Windows 10 / 11 | rozpakowany katalog, startuje szybciej |
+| `VCDS-LogScope-Windows7.exe` | **Windows 7 / 8 / 8.1** i nowsze | dla starszych laptopów warsztatowych |
+| `VCDS-LogScope-portable.zip` | Windows 10 / 11 | rozpakowany katalog, startuje szybciej |
+
+Numer wersji znajdziesz w programie: menu **Pomoc → O programie**.
 
 ## Skróty klawiszowe
 

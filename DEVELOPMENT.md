@@ -99,14 +99,33 @@ tools/           # build_exe.py, create_release.py, screenshot.py, make_example.
 
 ## Wydanie nowej wersji
 
+Numer wersji jest w `vcds_viewer/__init__.py` (`__version__`) — **każde wydanie dostaje
+własny numer i własny tag** (`v1.0.1`, `v1.0.2`, …), żeby użytkownik mógł wrócić do
+starszej wersji, jeśli nowsza coś popsuje. Opis zmian dla wersji dopisuje się do
+`CHANGELOG.md` (skrypt czyta stamtąd treść wydania; gdy brak wpisu, spada do historii gita).
+
 ```
+# 1. podnieś numer
+#    vcds_viewer/__init__.py -> __version__ = "1.0.2"
+# 2. dopisz sekcję "## 1.0.2 — data" w CHANGELOG.md
+# 3. zbuduj i wypuść
 .venv\Scripts\python.exe tools\build_exe.py --all --no-shortcut
-powershell -c "Compress-Archive -Path 'dist\VCDS LogScope\*' -DestinationPath 'dist\VCDS-LogScope-1.0-portable.zip' -Force"
-.venv\Scripts\python.exe tools\create_release.py --tag v1.0
+powershell -c "Compress-Archive -Path 'dist\VCDS LogScope\*' -DestinationPath 'dist\VCDS-LogScope-portable.zip' -Force"
+.venv\Scripts\python.exe tools\create_release.py            # wersja z pakietu, tag vX.Y.Z
 ```
 
 `create_release.py` korzysta z poświadczeń zapisanych przez Git Credential Manager
-(nic nie trzeba wpisywać), tworzy wydanie i podmienia załączniki.
+(nic nie trzeba wpisywać), zakłada tag na bieżącym commicie, wypycha go, tworzy **nowe**
+wydanie i wgrywa załączniki. Ponowne uruchomienie dla tej samej wersji podmienia pliki
+(przydatne, gdy build trzeba powtórzyć) — `--dry-run` pokazuje treść wydania bez publikacji.
+
+Zrzuty ekranu do weryfikacji (widok pasm, porównanie, klik w tabeli):
+
+```
+QT_QPA_PLATFORM= .venv\Scripts\python.exe tools\shot_bands.py plik.csv [--rpm]
+QT_QPA_PLATFORM= .venv\Scripts\python.exe tools\shot_compare.py logA.csv logB.csv
+QT_QPA_PLATFORM= .venv\Scripts\python.exe tools\shot_table_click.py plik.csv
+```
 
 ## Zrzuty ekranu do weryfikacji
 

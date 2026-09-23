@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -27,14 +27,16 @@ LOG_TAGS = ["A", "B", "C", "D", "E"]
 
 @dataclass
 class CompareParam:
-    """Parametr wspólny dla porównywanych logów."""
+    """Parametr w porównywanych logach (może występować tylko w części z nich)."""
 
     key: tuple
     name: str
     unit: str
     color: str
     series: dict[int, np.ndarray]     # indeks logu -> wartości (już na wspólnej siatce)
-    group: str = ""                   # grupa pomiarowa w logu A
+    group: str = ""                   # grupa pomiarowa
+    logs: list[int] = field(default_factory=list)   # w których logach występuje
+    common: bool = True               # czy jest we wszystkich porównywanych logach
 
 
 def interp_series(t: np.ndarray, y: np.ndarray, grid: np.ndarray) -> np.ndarray:
@@ -77,8 +79,12 @@ class CompareTableModel(QtCore.QAbstractTableModel):
     def _build_cols(self):
         cols: list[tuple[str, int, int]] = [("time", -1, -1)]
         for p in range(len(self.params)):
-            cols.append(("value", p, 0))
+            prm = self.params[p]
+            base = prm.logs[0] if prm.logs else 0
+            cols.append(("value", p, base))
             for k in range(1, max(len(self.tags), 2)):
+                if k == base or k not in prm.logs or base not in prm.logs:
+                    continue        # parametru nie ma w którymś z logów — nie ma czego porównywać
                 if self.show_b_values:
                     cols.append(("value", p, k))
                 cols.append(("delta", p, k))
@@ -100,7 +106,8 @@ class CompareTableModel(QtCore.QAbstractTableModel):
         group = f" (gr. {prm.group})" if prm.group else ""
         if typ == "value":
             return f"{prm.name}{group} — {self.tags[k]}{unit}"
-        return f"Δ {self.tags[k]}−{self.tags[0]}{unit}"
+        base = prm.logs[0] if prm.logs else 0
+        return f"Δ {self.tags[k]}−{self.tags[base]}{unit}"
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):  # noqa: N802
         if orientation == Qt.Vertical:
@@ -150,7 +157,8 @@ class CompareTableModel(QtCore.QAbstractTableModel):
                 return QtGui.QColor(self.theme.panel if r % 2 == 0 else self.theme.row_alt)
             return None
         # delta
-        a = prm.series.get(0)
+        base = prm.logs[0] if prm.logs else 0
+        a = prm.series.get(base)
         b = prm.series.get(k)
         if a is None or b is None or r >= len(a) or r >= len(b):
             return None
@@ -314,6 +322,20 @@ class CompareView(QtWidgets.QWidget):
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
         lay.addWidget(self.chk_sweeps)
 
+        lay.addWidget(QtWidgets.QLabel("Rysowanie:"))
+        self.cmb_draw = QtWidgets.QComboBox()
+        self.cmb_draw.addItem("Linia", "line")
+        self.cmb_draw.addItem("Punkty", "points")
+        self.cmb_draw.setFixedWidth(105)
+        self.cmb_draw.setToolTip(
+            "Linia łączy kolejne próbki — dobra dla osi czasu.\n"
+            "Punkty rysują każdą próbkę osobno — właściwe dla osi obrotów, bo przy tych\n"
+            "samych obrotach różne momenty mają różne wartości i linia tworzyłaby zygzaki."
+        )
+        self.cmb_draw.activated.connect(lambda _i=0: setattr(self, "_draw_touched", True))
+        self.cmb_draw.currentIndexChanged.connect(lambda _i=0: self.refresh())
+        lay.addWidget(self.cmb_draw)
+
         self.lbl_hint = QtWidgets.QLabel("")
         self.lbl_hint.setObjectName("hint")
         self.lbl_hint.setVisible(False)
@@ -420,6 +442,28 @@ class CompareView(QtWidgets.QWidget):
         ordered = [k for k in self.logs[0].match_index() if k in keys]
         return ordered
 
+    def all_params(self) -> list[tuple]:
+        """Wszystkie klucze ze wszystkich logów: najpierw wspólne, potem pozostałe.
+
+        Dzięki temu w porównaniu widać też parametry obecne tylko w jednym logu
+        (np. inny sterownik mierzył dodatkową wartość) — bez nich użytkownik nie wie,
+        że w ogóle są dostępne.
+        """
+        common = set(self.matched_params())
+        ordered = list(self.matched_params())
+        seen = set(ordered)
+        for log in self.logs:
+            for key in log.match_index():
+                if key not in seen:
+                    seen.add(key)
+                    ordered.append(key)
+        self._common_keys = common
+        return ordered
+
+    def param_logs(self, key: tuple) -> list[int]:
+        """Indeksy logów, które zawierają dany parametr."""
+        return [i for i, log in enumerate(self.logs) if log.find(key) is not None]
+
     def _common_grid(self) -> np.ndarray:
         """Wspólna siatka czasu: część wspólna zakresów, krok = najdrobniejszy krok logu."""
         starts, ends, steps = [], [], []
@@ -447,23 +491,29 @@ class CompareView(QtWidgets.QWidget):
         grid = self._common_grid()
         out: list[CompareParam] = []
         colors = color_map(self.logs[0].channels, self.theme.is_dark)
-        for key in self.matched_params():
+        for key in self.all_params():
             name, unit, occ = key
             channels = [log.find(key) for log in self.logs]
-            if any(c is None for c in channels):
+            present = [c for c in channels if c is not None and c.has_data]
+            if not present:
                 continue
+            first = present[0]
             series: dict[int, np.ndarray] = {}
             for i, ch in enumerate(channels):
+                if ch is None or not ch.has_data:
+                    continue          # parametr nie występuje w tym logu
                 t = np.asarray(ch.t, dtype=float) + (self.offset_b if i == 1 else 0.0)
                 series[i] = interp_series(t, np.asarray(ch.y, dtype=float), grid)
             out.append(
                 CompareParam(
                     key=key,
-                    name=channels[0].display_name,
-                    unit=channels[0].unit,
-                    color=colors.get(key, color_for(channels[0].name, channels[0].unit, occ)),
+                    name=first.display_name,
+                    unit=first.unit,
+                    color=colors.get(key, color_for(first.name, first.unit, occ)),
                     series=series,
-                    group=channels[0].group,
+                    group=first.group,
+                    logs=sorted(series.keys()),
+                    common=len(series) == len(self.logs),
                 )
             )
         return out
@@ -479,17 +529,25 @@ class CompareView(QtWidgets.QWidget):
         for prm in self.params:
             group = f"  (gr. {prm.group})" if prm.group else ""
             unit = f"  [{prm.unit}]" if prm.unit else ""
-            item = QtWidgets.QListWidgetItem(f"{prm.name}{group}{unit}")
+            mark = "" if prm.common else "  (tylko " + ", ".join(self.tags[i] for i in prm.logs) + ")"
+            item = QtWidgets.QListWidgetItem(f"{prm.name}{group}{unit}{mark}")
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked if self.param_checks.get(prm.key, True) else Qt.Unchecked)
             item.setData(Qt.UserRole, prm.key)
             item.setIcon(self._swatch(prm.color))
-            item.setToolTip(f"{prm.name} [{prm.unit}] — grupa {prm.group} w logu A")
+            if prm.common:
+                item.setToolTip(f"{prm.name} [{prm.unit}] — grupa {prm.group}, we wszystkich logach")
+            else:
+                names = ", ".join(f"Log {self.tags[i]}" for i in prm.logs)
+                item.setToolTip(f"{prm.name} [{prm.unit}] — grupa {prm.group}\n"
+                                f"występuje tylko w: {names}\n"
+                                "można oglądać, ale nie ma czego porównywać z drugim logiem")
             self.param_list.addItem(item)
         self.param_list.blockSignals(False)
 
         # --- wykres
         split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
+        points = self.cmb_draw.currentData() == "points"
         specs: list[SeriesSpec] = []
         for prm in self.params:
             if not self.param_checks.get(prm.key, True):
@@ -523,6 +581,7 @@ class CompareView(QtWidgets.QWidget):
                         group=ch.group,
                         lookup_x=lookup_x,
                         lookup_y=ch.y,
+                        points=points,
                     )
                 )
         self.chart.set_x_axis(
@@ -664,6 +723,10 @@ class CompareView(QtWidgets.QWidget):
 
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
+        self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        if not self._draw_touched:
+            # przy obrotach domyślnie punkty — linia tworzyłaby zygzaki
+            self.cmb_draw.setCurrentIndex(1 if self.x_mode == X_RPM else 0)
         self.refresh()
 
     def _on_offset(self, value: float):

@@ -27,6 +27,7 @@ class SeriesSpec:
     y: np.ndarray                  # wartości do rysowania
     style: int = Qt.SolidLine
     width: float = 1.7
+    points: bool = False           # rysuj same punkty (bez łączenia linią)
     tag: str = ""                  # np. "Log A" / "Log B" (tryb porównania)
     group: str = ""
     lookup_x: Optional[np.ndarray] = None   # wartości do odczytu pod kursorem (kolejność czasu)
@@ -194,13 +195,25 @@ class LogChart(QtWidgets.QWidget):
         s = _Series(spec)
         color = spec.color
         pen = pg.mkPen(color, width=spec.width, style=spec.style)
+        if spec.points:
+            # Tryb punktowy: przy osi obrotów ta sama wartość obrotów wypada w kilku momentach
+            # o różnych pozostałych parametrach, więc linia łączyłaby odległe w czasie próbki
+            # i tworzyła zygzaki. Punkty pokazują rzeczywisty rozrzut.
+            s.curve = pg.PlotDataItem(
+                pen=None, symbol="o", symbolSize=5.0,
+                symbolBrush=pg.mkBrush(pg.mkColor(color).red(), pg.mkColor(color).green(),
+                                       pg.mkColor(color).blue(), 190),
+                symbolPen=None, antialias=True,
+            )
+        else:
+            s.curve = pg.PlotDataItem(pen=pen, antialias=True, connect="finite")
         # UWAGA: kolejność ma znaczenie — najpierw dodajemy krzywą do wykresu,
         # dopiero potem włączamy clipToView (inaczej pyqtgraph cache'uje zły ViewBox).
-        s.curve = pg.PlotDataItem(pen=pen, antialias=True, connect="finite")
         s.curve.setZValue(10)
         self.plot.addItem(s.curve)
-        s.curve.setClipToView(True)
-        s.curve.setDownsampling(auto=True, method="peak")
+        if not spec.points:
+            s.curve.setClipToView(True)
+            s.curve.setDownsampling(auto=True, method="peak")
         s.curve.setData(s.px, self._plotted_y(s))
         s.dots = pg.ScatterPlotItem(
             size=9, pen=pg.mkPen(color, width=2), brush=pg.mkBrush(color),
