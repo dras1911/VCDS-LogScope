@@ -17,6 +17,9 @@ i możliwość porównania kilku logów między sobą.
 - linia kursora: najedź myszą na wykres i w dymku masz wartości wszystkich parametrów w tym momencie
 - przy osi X wyświetla się **dokładny czas i obroty** w miejscu kursora — nie trzeba niczego zgadywać
 - wykres można rysować w funkcji **czasu** albo w funkcji **obrotów**
+- przy osi obrotów program dzieli dane na **przebiegi** (każde przyspieszanie osobno) i sortuje
+  je po obrotach — linie nie tworzą wtedy pętli, a kolejne przyrosty można nakładać na siebie
+  i porównywać; obroty przestają być wtedy rysowane jako seria, bo są osią
 - „Normalizuj 0–100%” przydaje się, gdy parametry mają bardzo różne wartości (obroty 0–6000,
   a temperatura 80–90) — wtedy widać kształt każdej linii
 

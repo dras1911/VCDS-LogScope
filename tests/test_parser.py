@@ -115,3 +115,45 @@ def test_value_at(log):
     assert rpm.value_at(0.60) == 1560
     assert rpm.value_at(0.61) == 1560
     assert rpm.value_at(0.0) == 1560        # przed zakresem -> pierwsza próbka
+
+
+def test_rpm_segments_split_sweeps(log):
+    """Oś obrotów: podział na przebiegi musi usuwać pętle (linie nie cofają się po obrotach)."""
+    segments = log.rpm_segments()
+    assert len(segments) >= 1
+    # segmenty pokrywają całą serię obrotów i nie nachodzą na siebie
+    rt, _ry = log.rpm_series()
+    assert segments[0][0] == 0 and segments[-1][1] == len(rt)
+    for (a1, b1), (a2, _b2) in zip(segments, segments[1:]):
+        assert b1 == a2
+
+    channel = log.find((("obciążenie"), ("%"), 0))
+    x_split, y_split = log.plot_xy(channel, X_RPM, split_sweeps=True)
+    x_raw, _y_raw = log.plot_xy(channel, X_RPM, split_sweeps=False)
+    assert len(x_split) > len(x_raw)          # doszły przerwy (NaN) między przebiegami
+    assert np.isnan(x_split).sum() == len(segments)
+
+    # każdy blok danych jest posortowany po obrotach => brak zawrotów osi X
+    finite = np.isfinite(x_split)
+    blocks, current = [], []
+    for i in range(len(x_split)):
+        if finite[i]:
+            current.append(i)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    assert len(blocks) == len(segments)
+    for block in blocks:
+        assert np.all(np.diff(x_split[block]) >= 0)
+
+    # surowe dane w kolejności czasu faktycznie zawracają (dlatego pętle powstawały)
+    raw_finite = np.isfinite(x_raw)
+    assert ((np.diff(x_raw[raw_finite]) < 0).sum() > 0)
+
+
+def test_time_for_rpm(log):
+    t = log.time_for_rpm(3000.0)
+    assert t is not None and 0 <= t <= log.duration
+    assert log.rpm_nearest(t) == pytest.approx(3000.0, abs=60)

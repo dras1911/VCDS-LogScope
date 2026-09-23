@@ -242,6 +242,7 @@ class CompareView(QtWidgets.QWidget):
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
         root.addWidget(self.toolbar)
+        root.addWidget(self.lbl_hint)
         root.addLayout(body, 1)
 
         self.chart.doubleClicked.connect(self.chart.fit)
@@ -303,10 +304,19 @@ class CompareView(QtWidgets.QWidget):
         self.chk_norm.toggled.connect(self._on_normalize)
         lay.addWidget(self.chk_norm)
 
+        self.chk_sweeps = QtWidgets.QCheckBox("Dziel na przebiegi")
+        self.chk_sweeps.setChecked(True)
+        self.chk_sweeps.setToolTip(
+            "Przy osi obrotów: dzieli dane w miejscach zawrotu obrotów i rysuje każdy przebieg\n"
+            "osobno — dzięki temu linie nie tworzą pętli po tych samych obrotach."
+        )
+        self.chk_sweeps.toggled.connect(lambda _checked=False: self.refresh())
+        self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        lay.addWidget(self.chk_sweeps)
+
         self.lbl_hint = QtWidgets.QLabel("")
         self.lbl_hint.setObjectName("hint")
-        self.lbl_hint.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
-        lay.addWidget(self.lbl_hint)
+        self.lbl_hint.setVisible(False)
 
         lay.addWidget(QtWidgets.QLabel("Przesunięcie B [s]:"))
         self.spin_offset = QtWidgets.QDoubleSpinBox()
@@ -479,6 +489,7 @@ class CompareView(QtWidgets.QWidget):
         self.param_list.blockSignals(False)
 
         # --- wykres
+        split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
         specs: list[SeriesSpec] = []
         for prm in self.params:
             if not self.param_checks.get(prm.key, True):
@@ -489,9 +500,14 @@ class CompareView(QtWidgets.QWidget):
                 ch = log.find(prm.key)
                 if ch is None or not ch.has_data:
                     continue
-                x = log.x_for(ch, self.x_mode)
-                if i == 1 and self.offset_b and self.x_mode == X_TIME:
-                    x = np.asarray(x, dtype=float) + self.offset_b
+                if self.x_mode == X_RPM and ch.is_rpm:
+                    continue          # obroty są osią X, nie serią
+                offset = self.offset_b if (i == 1 and self.x_mode == X_TIME) else 0.0
+                x, y = log.plot_xy(ch, self.x_mode, split_sweeps=split)
+                lookup_x = log.x_for(ch, self.x_mode)
+                if offset:
+                    x = np.asarray(x, dtype=float) + offset
+                    lookup_x = np.asarray(lookup_x, dtype=float) + offset
                 specs.append(
                     SeriesSpec(
                         sid=f"{prm.key}|{i}",
@@ -500,11 +516,13 @@ class CompareView(QtWidgets.QWidget):
                         unit=ch.unit,
                         color=prm.color,
                         x=x,
-                        y=ch.y,
+                        y=y,
                         style=LINE_STYLES[i % len(LINE_STYLES)][0],
                         width=1.7 if i == 0 else 1.5,
                         tag=f"Log {self.tags[i]}",
                         group=ch.group,
+                        lookup_x=lookup_x,
+                        lookup_y=ch.y,
                     )
                 )
         self.chart.set_x_axis(
@@ -612,7 +630,15 @@ class CompareView(QtWidgets.QWidget):
         self._check_scales()
 
     def _check_scales(self):
-        """Podpowiada normalizację, gdy rozpiętości porównywanych parametrów bardzo się różnią."""
+        """Podpowiedzi: przebiegi przy osi obrotów, normalizacja przy różnych zakresach."""
+        if self.x_mode == X_RPM:
+            segs = sum(len(log.rpm_segments()) for log in self.logs)
+            self._set_hint(
+                "Oś X = obroty: linie podzielone na przebiegi i posortowane po obrotach (bez pętli). "
+                "Obroty nie są rysowane jako seria — są osią X."
+                if segs > len(self.logs) else "Oś X = obroty (obroty są osią, nie serią)."
+            )
+            return
         spans = []
         for prm in self.params:
             v = prm.series.get(0)
@@ -622,15 +648,19 @@ class CompareView(QtWidgets.QWidget):
             if len(finite):
                 spans.append(float(finite.max() - finite.min()))
         if not spans or self.chk_norm.isChecked():
-            self.lbl_hint.setText("")
+            self._set_hint("")
             return
         spans.sort()
         ratio = spans[-1] / max(spans[0], 1e-9)
-        self.lbl_hint.setText(
+        self._set_hint(
             "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
             "aby porównać kształty wszystkich serii"
             if ratio > 25 else ""
         )
+
+    def _set_hint(self, text: str):
+        self.lbl_hint.setText(text)
+        self.lbl_hint.setVisible(bool(text))
 
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
@@ -652,10 +682,8 @@ class CompareView(QtWidgets.QWidget):
         series = base.rpm_series()
         if series is None:
             return ""
-        rt, ry = series
-        order = np.argsort(ry)
-        t = float(np.interp(x, ry[order], rt[order]))
-        return f"Log {self.tags[0]}: {fmt_num(t, 2)} s"
+        t = base.time_for_rpm(x)
+        return f"Log {self.tags[0]}: {fmt_num(t, 2)} s" if t is not None else ""
 
     def _export_png(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(

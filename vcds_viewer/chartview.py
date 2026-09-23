@@ -23,16 +23,18 @@ class SeriesSpec:
     short: str                     # krótka etykieta (bez grupy)
     unit: str
     color: str
-    x: np.ndarray
-    y: np.ndarray
+    x: np.ndarray                  # wartości osi X do rysowania
+    y: np.ndarray                  # wartości do rysowania
     style: int = Qt.SolidLine
     width: float = 1.7
     tag: str = ""                  # np. "Log A" / "Log B" (tryb porównania)
     group: str = ""
+    lookup_x: Optional[np.ndarray] = None   # wartości do odczytu pod kursorem (kolejność czasu)
+    lookup_y: Optional[np.ndarray] = None
 
 
 class _Series:
-    __slots__ = ("spec", "curve", "dots", "visible", "px", "py", "ymin", "ymax")
+    __slots__ = ("spec", "curve", "dots", "visible", "px", "py", "lx", "ly", "ymin", "ymax")
 
     def __init__(self, spec: SeriesSpec):
         self.spec = spec
@@ -41,8 +43,12 @@ class _Series:
         self.visible = True
         self.px = np.asarray(spec.x, dtype=float)
         self.py = np.asarray(spec.y, dtype=float)
-        self.ymin = float(np.nanmin(self.py)) if len(self.py) else 0.0
-        self.ymax = float(np.nanmax(self.py)) if len(self.py) else 1.0
+        # tablice do odczytu wartości pod kursorem (bez przerw na przebiegi)
+        self.lx = np.asarray(spec.lookup_x, dtype=float) if spec.lookup_x is not None else self.px
+        self.ly = np.asarray(spec.lookup_y, dtype=float) if spec.lookup_y is not None else self.py
+        finite = self.ly[np.isfinite(self.ly)]
+        self.ymin = float(finite.min()) if len(finite) else 0.0
+        self.ymax = float(finite.max()) if len(finite) else 1.0
 
 
 class LogViewBox(pg.ViewBox):
@@ -260,10 +266,16 @@ class LogChart(QtWidgets.QWidget):
         vis = self.visible_series()
         if not vis:
             return
-        xmin = min(float(np.nanmin(s.px)) for s in vis if len(s.px))
-        xmax = max(float(np.nanmax(s.px)) for s in vis if len(s.px))
-        ymin = min(float(np.nanmin(self._plotted_y(s))) for s in vis if len(s.py))
-        ymax = max(float(np.nanmax(self._plotted_y(s))) for s in vis if len(s.py))
+        xs = [s.px[np.isfinite(s.px)] for s in vis]
+        xs = [a for a in xs if len(a)]
+        ys = [self._plotted_y(s) for s in vis]
+        ys = [a[np.isfinite(a)] for a in ys if len(a)]
+        if not xs or not ys:
+            return
+        xmin = min(float(a.min()) for a in xs)
+        xmax = max(float(a.max()) for a in xs)
+        ymin = min(float(a.min()) for a in ys)
+        ymax = max(float(a.max()) for a in ys)
         if xmax <= xmin:
             xmax = xmin + 1
         if ymax <= ymin:
@@ -292,12 +304,14 @@ class LogChart(QtWidgets.QWidget):
 
     def step_cursor(self, direction: int):
         """Przesuwa kursor o jedną próbkę (klawiatura ←/→)."""
-        vis = [s for s in self.visible_series() if len(s.px)]
+        vis = [s for s in self.visible_series() if len(s.lx)]
         if not vis:
             return
-        ref = np.unique(np.concatenate([s.px for s in vis]))
+        ref = np.unique(np.concatenate([s.lx[np.isfinite(s.lx)] for s in vis]))
+        if not len(ref):
+            return
         if self._cursor_x is None:
-            self.set_cursor_x(ref[0])
+            self.set_cursor_x(float(ref[0]))
             return
         i = int(np.searchsorted(ref, self._cursor_x))
         i = min(max(i + direction, 0), len(ref) - 1)
@@ -310,10 +324,10 @@ class LogChart(QtWidgets.QWidget):
             self._refresh_cursor_items()
 
     def _snap_x(self, x: float) -> float:
-        vis = [s for s in self.visible_series() if len(s.px)]
+        vis = [s for s in self.visible_series() if len(s.lx)]
         if not vis:
             return x
-        ref = np.unique(np.concatenate([s.px for s in vis]))
+        ref = np.unique(np.concatenate([s.lx[np.isfinite(s.lx)] for s in vis]))
         if not len(ref):
             return x
         i = int(np.searchsorted(ref, x))
@@ -346,21 +360,29 @@ class LogChart(QtWidgets.QWidget):
         # punkty na przecięciu kursora z każdą serią + dane do dymku
         rows = []
         for s in vis:
-            if not len(s.px):
+            if not len(s.lx):
                 continue
-            i = int(np.searchsorted(s.px, x))
-            i = min(max(i, 0), len(s.px) - 1)
-            if i > 0 and abs(s.px[i - 1] - x) <= abs(s.px[i] - x):
-                i -= 1
-            px, py = float(s.px[i]), float(self._plotted_y(s)[i])
-            s.dots.setData([px], [py])
-            real = float(s.spec.y[i]) if i < len(s.spec.y) else float("nan")
+            # najbliższa próbka pod kursorem — w trybie RPM szukamy po obrotach,
+            # bo ta sama wartość obrotów występuje w kilku przebiegach
+            i = int(np.argmin(np.abs(s.lx - x)))
+            real = float(s.ly[i]) if i < len(s.ly) else float("nan")
+            plotted = self._plotted_value(s, real)
+            s.dots.setData([x], [plotted])
             rows.append((s.spec, real))
 
         self.marker_label.hide()
         self._build_tooltip(x, rows)
         self._place_tooltip(x)
         self._update_badge(x)
+
+    def _plotted_value(self, s: _Series, value: float) -> float:
+        """Wartość w układzie wykresu (z uwzględnieniem normalizacji)."""
+        if not self._normalized:
+            return value
+        span = s.ymax - s.ymin
+        if span <= 0 or not np.isfinite(value):
+            return 0.0
+        return (value - s.ymin) / span * 100.0
 
     # ---------------------------------------------------- etykieta przy osi X
     def _badge_text(self, x: float) -> str:

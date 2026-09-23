@@ -266,6 +266,94 @@ class LogData:
             i -= 1
         return float(ry[i])
 
+    def rpm_segments(self, min_reversal: float = 60.0) -> list[tuple[int, int]]:
+        """Przedziały serii obrotów o stałym kierunku (kolejne „przebiegi”).
+
+        Gdy obroty rosną i maleją na zmianę (jazda na biegu jałowym, kilka przyrostów),
+        rysowanie w funkcji obrotów w kolejności czasu tworzy pętle — ta sama wartość
+        obrotów wypada w kilku momentach z różnymi wartościami pozostałych parametrów.
+        Dzieląc dane w miejscach zawrotu obrotów i sortując każdy fragment po obrotach,
+        dostajemy czytelne przebiegi bez pętli.
+        """
+        rpm = self.rpm_series()
+        if rpm is None:
+            return []
+        _rt, ry = rpm
+        n = len(ry)
+        if n < 3:
+            return [(0, n)]
+        bounds = [0]
+        direction = 0
+        extreme = float(ry[0])
+        for i in range(1, n):
+            v = float(ry[i])
+            if direction >= 0 and v >= extreme:
+                extreme, direction = v, 1
+            elif direction <= 0 and v <= extreme:
+                extreme, direction = v, -1
+            elif direction == 1 and extreme - v > min_reversal:
+                bounds.append(i)
+                extreme, direction = v, -1
+            elif direction == -1 and v - extreme > min_reversal:
+                bounds.append(i)
+                extreme, direction = v, 1
+        bounds.append(n)
+        return [(bounds[k], bounds[k + 1]) for k in range(len(bounds) - 1)]
+
+    def plot_xy(self, channel: Channel, mode: str = X_TIME,
+                split_sweeps: bool = False) -> tuple[np.ndarray, np.ndarray]:
+        """Zwraca (x, y) gotowe do narysowania.
+
+        W trybie RPM z `split_sweeps=True` linia jest dzielona na przebiegi (przerwy = NaN),
+        a każdy przebieg sortowany po obrotach — dzięki temu nie ma pętli.
+        """
+        y = np.asarray(channel.y, dtype=float)
+        if mode == X_TIME:
+            return np.asarray(channel.t, dtype=float), y
+        x = self.x_for(channel, X_RPM)
+        if not split_sweeps:
+            return x, y
+        rpm = self.rpm_series()
+        if rpm is None or len(x) < 3:
+            return x, y
+        rt, _ry = rpm
+        segments = self.rpm_segments()
+        if len(segments) <= 1:
+            order = np.argsort(x, kind="stable")
+            return x[order], y[order]
+        xs: list[np.ndarray] = []
+        ys: list[np.ndarray] = []
+        covered = np.zeros(len(x), dtype=bool)
+        for a, b in segments:
+            t0 = float(rt[a])
+            t1 = float(rt[min(b, len(rt) - 1)])
+            mask = (np.asarray(channel.t, dtype=float) >= t0) & (np.asarray(channel.t, dtype=float) <= t1)
+            if not mask.any():
+                continue
+            covered |= mask
+            order = np.argsort(x[mask], kind="stable")
+            xs.append(x[mask][order])
+            ys.append(y[mask][order])
+            xs.append(np.array([np.nan]))
+            ys.append(np.array([np.nan]))
+        if not covered.all():     # próbki poza zakresem obrotów — osobny fragment
+            mask = ~covered
+            order = np.argsort(x[mask], kind="stable")
+            xs.append(x[mask][order])
+            ys.append(y[mask][order])
+        if not xs:
+            return x, y
+        return np.concatenate(xs), np.concatenate(ys)
+
+    def time_for_rpm(self, rpm_value: float) -> Optional[float]:
+        """Czas najbliższej próbki o podanych obrotach (do etykiety kursora w trybie RPM)."""
+        rpm = self.rpm_series()
+        if rpm is None:
+            return None
+        rt, ry = rpm
+        i = int(np.argmin(np.abs(ry - rpm_value)))
+        return float(rt[i])
+
     # -------------------------------------------------------------- dopasowanie
     def match_index(self) -> dict[tuple, Channel]:
         return {c.match_key: c for c in self.numeric_channels}

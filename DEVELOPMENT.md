@@ -83,7 +83,7 @@ na której wersji działa. Różnice, które ta warstwa ukrywa:
 vcds_viewer/
   qt.py          # warstwa zgodności PySide6 / PySide2
   parser.py      # czytanie CSV z VCDS (kodowania, grupy, jednostki, bloki)
-  model.py       # model danych: LogData / Group / Channel, oś X czas|RPM
+  model.py       # model danych: LogData / Group / Channel, oś X czas|RPM, przebiegi obrotów
   colors.py      # paleta kolorów parametrów + unikalne kolory serii
   chartview.py   # wykres nakładany, kursor, dymek, etykieta przy osi X
   tableview.py   # tabela: heatmapa, strzałki zmian, nagłówek grupowy

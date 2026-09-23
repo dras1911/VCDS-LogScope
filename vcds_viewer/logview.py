@@ -159,6 +159,7 @@ class LogView(QtWidgets.QWidget):
         cbl.setContentsMargins(0, 0, 0, 0)
         cbl.setSpacing(4)
         cbl.addWidget(self.chart_toolbar)
+        cbl.addWidget(self.lbl_hint)
         cbl.addWidget(self.chart, 1)
 
         self.splitter = QtWidgets.QSplitter(Qt.Vertical, self)
@@ -202,6 +203,17 @@ class LogView(QtWidgets.QWidget):
         self.cmb_x.currentIndexChanged.connect(self._on_x_mode)
         lay.addWidget(self.cmb_x)
 
+        self.chk_sweeps = QtWidgets.QCheckBox("Dziel na przebiegi")
+        self.chk_sweeps.setChecked(True)
+        self.chk_sweeps.setToolTip(
+            "Przy osi obrotów: dzieli dane w miejscach, gdzie obroty zawracają (np. koniec\n"
+            "przyspieszania) i rysuje każdy przebieg osobno, sortując próbki po obrotach.\n"
+            "Bez tego linia wraca po tych samych obrotach i tworzy pętle."
+        )
+        self.chk_sweeps.toggled.connect(lambda _checked=False: self.rebuild_series())
+        self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
+        lay.addWidget(self.chk_sweeps)
+
         self.chk_norm = QtWidgets.QCheckBox("Normalizuj 0–100%")
         self.chk_norm.setToolTip(
             "Przeskalowuje każdą serię do jej własnego zakresu (0–100%).\n"
@@ -213,8 +225,8 @@ class LogView(QtWidgets.QWidget):
 
         self.lbl_hint = QtWidgets.QLabel("")
         self.lbl_hint.setObjectName("hint")
-        self.lbl_hint.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
-        lay.addWidget(self.lbl_hint)
+        self.lbl_hint.setWordWrap(False)
+        self.lbl_hint.setVisible(False)
 
         self.chk_snap = QtWidgets.QCheckBox("Przyciągaj do próbek")
         self.chk_snap.setChecked(True)
@@ -245,9 +257,11 @@ class LogView(QtWidgets.QWidget):
     # ------------------------------------------------------------------ serie
     def rebuild_series(self):
         specs: list[SeriesSpec] = []
+        split = self.x_mode == X_RPM and self.chk_sweeps.isChecked()
         for ch in self.log.channels:
             if not ch.has_data:
                 continue
+            x, y = self.log.plot_xy(ch, self.x_mode, split_sweeps=split)
             specs.append(
                 SeriesSpec(
                     sid=sid_for(ch),
@@ -255,9 +269,11 @@ class LogView(QtWidgets.QWidget):
                     short=ch.short_label,
                     unit=ch.unit,
                     color=self.colors.get(ch.match_key, "#9aa0a6"),
-                    x=self.log.x_for(ch, self.x_mode),
-                    y=ch.y,
+                    x=x,
+                    y=y,
                     group=ch.group,
+                    lookup_x=self.log.x_for(ch, self.x_mode),
+                    lookup_y=ch.y,
                 )
             )
         self.chart.set_x_axis(
@@ -281,31 +297,59 @@ class LogView(QtWidgets.QWidget):
         self._check_scales()
 
     def _check_scales(self):
-        """Podpowiada normalizację, gdy rozpiętości parametrów bardzo się różnią."""
+        """Podpowiedzi kontekstowe: normalizacja przy różnych zakresach, przebiegi przy osi obrotów."""
+        if self.x_mode == X_RPM:
+            segments = self.log.rpm_segments()
+            if len(segments) > 1:
+                text = (f"Oś X = obroty: linie podzielone na {len(segments)} przebiegi i posortowane "
+                        "po obrotach (bez pętli). Obroty nie są rysowane jako seria — są osią X.")
+            else:
+                text = "Oś X = obroty (obroty są osią, nie serią)."
+            self._set_hint(text)
+            return
         spans = []
         for ch in self.log.numeric_channels:
             if ch.has_data:
                 lo, hi, _ = ch.stats()
                 spans.append(hi - lo)
         if not spans or self.chk_norm.isChecked():
-            self.lbl_hint.setText("")
+            self._set_hint("")
             return
         spans.sort()
         ratio = spans[-1] / max(spans[0], 1e-9)
-        if ratio > 25:
-            self.lbl_hint.setText(
-                "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
-                "aby widzieć kształt każdej serii"
-            )
-        else:
-            self.lbl_hint.setText("")
+        self._set_hint(
+            "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
+            "aby widzieć kształt każdej serii"
+            if ratio > 25 else ""
+        )
+
+    def _set_hint(self, text: str):
+        self.lbl_hint.setText(text)
+        self.lbl_hint.setVisible(bool(text))
 
     def _on_series_toggled(self, sid: str, checked: bool):
         self.chart.set_series_visible(sid, checked)
 
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
+        if self.x_mode == X_RPM:
+            # obroty są teraz osią X — nie rysujemy ich jako serii (byłaby to linia y = x)
+            self._set_rpm_visible(False)
+        else:
+            self._set_rpm_visible(True)
+        self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
         self.rebuild_series()
+
+    def _set_rpm_visible(self, visible: bool):
+        """Włącza/wyłącza kanały obrotów w panelu (przy osi X = obroty są zbędne)."""
+        for ch in self.log.channels:
+            if not ch.is_rpm or not ch.has_data:
+                continue
+            sid = sid_for(ch)
+            for i in range(self.panel.list.count()):
+                item = self.panel.list.item(i)
+                if item.data(Qt.UserRole) == sid:
+                    item.setCheckState(Qt.Checked if visible else Qt.Unchecked)
 
     def _export_png(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
