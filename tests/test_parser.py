@@ -131,7 +131,7 @@ def test_rpm_segments_split_sweeps(log):
     x_split, y_split = log.plot_xy(channel, X_RPM, split_sweeps=True)
     x_raw, _y_raw = log.plot_xy(channel, X_RPM, split_sweeps=False)
     assert len(x_split) > len(x_raw)          # doszły przerwy (NaN) między przebiegami
-    assert np.isnan(x_split).sum() == len(segments)
+    assert np.isnan(x_split).sum() >= len(segments)
 
     # każdy blok danych jest posortowany po obrotach => brak zawrotów osi X
     finite = np.isfinite(x_split)
@@ -144,7 +144,7 @@ def test_rpm_segments_split_sweeps(log):
             current = []
     if current:
         blocks.append(current)
-    assert len(blocks) == len(segments)
+    assert len(blocks) >= len(segments)      # przebiegi + przerwy na skokach czasu
     for block in blocks:
         assert np.all(np.diff(x_split[block]) >= 0)
 

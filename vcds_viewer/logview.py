@@ -211,7 +211,7 @@ class LogView(QtWidgets.QWidget):
         self.cmb_view.addItem("Pasma", "bands")
         self.cmb_view.setFixedWidth(130)
         self.cmb_view.setToolTip(
-            "Nakładany — wszystkie serie na jednym wykresie (jak w TuneZilla).\n"
+            "Nakładany — wszystkie serie na jednym wykresie, wspólna skala.\n"
             "Pasma — każdy parametr w osobnym pasie z własną skalą i wspólnym kursorem.\n"
             "Przy 6+ parametrach pasma są znacznie czytelniejsze."
         )

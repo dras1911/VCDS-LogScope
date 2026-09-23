@@ -3,6 +3,21 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.2 — 23 września 2026
+
+**Naprawione**
+
+- **Pionowe „ściany” na wykresie przy osi obrotów.** Rysując linią, program łączył ze sobą
+  próbki, które dzieliły dziesiątki sekund (np. dwa biegi jałowe w różnych momentach logu) —
+  powstawały pionowe kreski wyglądające jak pętle. Teraz linia jest w takich miejscach
+  rozcinana. Zmiana dotyczy **wyłącznie osi obrotów** — przy osi czasu linia zostaje ciągła,
+  bo tam kolejność próbek jest prawdziwa.
+- **Przesuwanie kursora strzałkami przy przybliżeniu.** Kursor wyjeżdżał poza widok i nie było
+  widać, w którym miejscu logu jesteśmy. Teraz widok przesuwa się razem z kursorem — tak samo
+  jak przy klikaniu wierszy tabeli.
+- **Opisy i podpowiedzi** nie odwołują się już do innych programów — narzędzie jest opisane
+  na własnych zasadach (dotyczy opisu wydania, README i podpowiedzi w oknie programu).
+
 ## 1.0.1 — 23 września 2026
 
 **Naprawione (na podstawie zgłoszeń)**

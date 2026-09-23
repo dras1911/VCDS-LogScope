@@ -88,6 +88,37 @@ def test_rpm_axis_cursor_is_scrolled_into_view(app, log):
     assert lo2 <= x <= hi2, "kursor musi pozostać w widocznym zakresie osi X"
 
 
+def test_arrow_keys_keep_cursor_in_view(app, log):
+    """Przy przybliżeniu strzałki nie mogą wyprowadzić kursora za ekran."""
+    view = _view(app, log)
+    view.cmb_x.setCurrentIndex(0)                 # oś czasu
+    view.chart.fit()
+    lo, hi = view.chart.plot.vb.viewRange()[0]
+    span = hi - lo
+    # przybliżamy do 10% zakresu i stawiamy kursor na początku widoku
+    view.chart.plot.vb.setXRange(lo, lo + span * 0.1, padding=0.0)
+    view.set_cursor_time(float(lo) + span * 0.02)
+    for _ in range(25):
+        view.chart.step_cursor(1)
+        lo2, hi2 = view.chart.plot.vb.viewRange()[0]
+        assert lo2 <= view.chart.cursor_x() <= hi2, "kursor wyjechał poza widok"
+
+
+def test_arrow_keys_keep_cursor_in_view_rpm(app, log):
+    """To samo przy osi obrotów."""
+    view = _view(app, log)
+    view.cmb_x.setCurrentIndex(1)
+    view.chart.fit()
+    lo, hi = view.chart.plot.vb.viewRange()[0]
+    span = hi - lo
+    view.chart.plot.vb.setXRange(lo, lo + span * 0.1, padding=0.0)
+    view.chart.set_cursor_x(float(lo) + span * 0.02, emit=True, snap=False)
+    for _ in range(25):
+        view.chart.step_cursor(1)
+        lo2, hi2 = view.chart.plot.vb.viewRange()[0]
+        assert lo2 <= view.chart.cursor_x() <= hi2, "kursor wyjechał poza widok"
+
+
 def test_status_time_matches_clicked_row(app, log):
     """Pasek statusu nie może pokazywać innego czasu niż kliknięty wiersz."""
     view = _view(app, log)

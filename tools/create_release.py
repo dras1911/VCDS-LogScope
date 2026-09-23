@@ -35,7 +35,7 @@ ani internetu. Logi nie są nigdzie wysyłane.
 ### Co potrafi
 
 **Wykres ze wszystkimi parametrami naraz** — w dwóch widokach
-- **Nakładany**: wszystkie linie na jednym wykresie (jak w TuneZilla)
+- **Nakładany**: wszystkie linie na jednym wykresie — od razu widać, jak parametry zachowują się względem siebie
 - **Pasma**: każdy parametr w osobnym pasie z własną skalą — czytelny przy dowolnej liczbie parametrów
 - linia kursora z dymkiem: najedź myszą i masz wartości wszystkich parametrów w tym momencie
 - przy osi X wyświetla się **dokładny czas i obroty** w miejscu kursora — nie trzeba niczego zgadywać

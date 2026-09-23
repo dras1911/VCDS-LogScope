@@ -324,26 +324,69 @@ class LogData:
         xs: list[np.ndarray] = []
         ys: list[np.ndarray] = []
         covered = np.zeros(len(x), dtype=bool)
+        ch_t = np.asarray(channel.t, dtype=float)
+        limit = self._gap_limit(ch_t)
         for a, b in segments:
             t0 = float(rt[a])
             t1 = float(rt[min(b, len(rt) - 1)])
-            mask = (np.asarray(channel.t, dtype=float) >= t0) & (np.asarray(channel.t, dtype=float) <= t1)
+            mask = (ch_t >= t0) & (ch_t <= t1)
             if not mask.any():
                 continue
             covered |= mask
             order = np.argsort(x[mask], kind="stable")
-            xs.append(x[mask][order])
-            ys.append(y[mask][order])
+            seg_x, seg_y = self._insert_gaps(x[mask][order], y[mask][order],
+                                             ch_t[mask][order], limit)
+            xs.append(seg_x)
+            ys.append(seg_y)
             xs.append(np.array([np.nan]))
             ys.append(np.array([np.nan]))
         if not covered.all():     # próbki poza zakresem obrotów — osobny fragment
             mask = ~covered
             order = np.argsort(x[mask], kind="stable")
-            xs.append(x[mask][order])
-            ys.append(y[mask][order])
+            seg_x, seg_y = self._insert_gaps(x[mask][order], y[mask][order],
+                                             ch_t[mask][order], limit)
+            xs.append(seg_x)
+            ys.append(seg_y)
         if not xs:
             return x, y
         return np.concatenate(xs), np.concatenate(ys)
+
+    @staticmethod
+    def _gap_limit(t: np.ndarray) -> float:
+        """Próg przerwy czasowej: powyżej niego łączymy próbki z odległych momentów."""
+        if len(t) < 3:
+            return 2.0
+        dt = np.diff(np.sort(t))
+        dt = dt[dt > 0]
+        step = float(np.median(dt)) if len(dt) else 0.9
+        return max(3.0 * step, 1.5)
+
+    @staticmethod
+    def _insert_gaps(x: np.ndarray, y: np.ndarray, t: np.ndarray,
+                     limit: float) -> tuple[np.ndarray, np.ndarray]:
+        """Rozcina linię tam, gdzie sąsiednie (po obrotach) próbki dzieli duży skok czasu.
+
+        Sortowanie po obrotach zestawia ze sobą próbki z różnych momentów logu (np. dwa
+        biegi jałowe). Połączenie ich linią daje pionowe „ściany”, których w rzeczywistości
+        nie było — przerwa w linii pokazuje to uczciwie.
+        """
+        if len(x) < 2:
+            return x, y
+        jumps = np.where(np.abs(np.diff(t)) > limit)[0]
+        if not len(jumps):
+            return x, y
+        out_x: list[np.ndarray] = []
+        out_y: list[np.ndarray] = []
+        start = 0
+        for i in jumps:
+            out_x.append(x[start:i + 1])
+            out_y.append(y[start:i + 1])
+            out_x.append(np.array([np.nan]))
+            out_y.append(np.array([np.nan]))
+            start = i + 1
+        out_x.append(x[start:])
+        out_y.append(y[start:])
+        return np.concatenate(out_x), np.concatenate(out_y)
 
     def time_for_rpm(self, rpm_value: float) -> Optional[float]:
         """Czas najbliższej próbki o podanych obrotach (do etykiety kursora w trybie RPM)."""

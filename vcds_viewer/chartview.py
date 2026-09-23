@@ -343,10 +343,13 @@ class LogChart(QtWidgets.QWidget):
             return
         if self._cursor_x is None:
             self.set_cursor_x(float(ref[0]))
+            self.ensure_visible(self._cursor_x)
             return
         i = int(np.searchsorted(ref, self._cursor_x))
         i = min(max(i + direction, 0), len(ref) - 1)
         self.set_cursor_x(float(ref[i]), snap=False)
+        # przy przybliżeniu kursor nie może wyjechać za ekran — widok jedzie za nim
+        self.ensure_visible(self._cursor_x)
 
     def clear_pin(self):
         self._pinned = False
