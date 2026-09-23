@@ -191,6 +191,7 @@ def upload_asset(token: str, release_id: int, path: Path, asset_name: str | None
 def main() -> int:
     args = sys.argv[1:]
     dry = "--dry-run" in args
+    notes_only = "--notes-only" in args
     version = args[args.index("--version") + 1] if "--version" in args else package_version()
     tag = args[args.index("--tag") + 1] if "--tag" in args else f"v{version}"
     push_tag = "--no-tag-push" not in args
@@ -252,7 +253,11 @@ def main() -> int:
         print(f"Utworzono wydanie: {release.get('html_url')}")
 
     uploaded = []
+    if notes_only:
+        print("(tryb --notes-only: opis zaktualizowany, załączniki nietknięte)")
     for path, name in assets:
+        if notes_only:
+            break
         if path.exists():
             uploaded.append(upload_asset(token, release["id"], path, name))
         else:
