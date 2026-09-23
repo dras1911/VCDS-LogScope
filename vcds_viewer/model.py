@@ -352,14 +352,15 @@ class LogData:
         return np.concatenate(xs), np.concatenate(ys)
 
     @staticmethod
-    def mean_by_rpm(x: np.ndarray, y: np.ndarray,
-                    bins: int = 120) -> tuple[np.ndarray, np.ndarray]:
+    def mean_by_rpm(x: np.ndarray, y: np.ndarray, bins: int = 120,
+                    smooth: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """Średnia wartość w przedziałach obrotów — czytelna charakterystyka.
 
         Przy osi obrotów ten sam parametr ma przy tych samych obrotach różne wartości
         (kąt zapłonu zależy też od obciążenia), więc linia łącząca surowe próbki tworzy
         zygzaki. Uśrednienie w przedziałach pokazuje trend: „ile wynosi ten parametr
-        przy danych obrotach”. Przedziały bez próbek zostają puste (przerwa w linii).
+        przy danych obrotach”. Przedziały bez próbek zostają puste (przerwa w linii),
+        a sąsiednie średnie są dodatkowo lekko wygładzane, żeby charakterystyka była gładka.
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -370,14 +371,33 @@ class LogData:
         lo, hi = float(xs.min()), float(xs.max())
         if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
             return xs, ys
-        bins = max(8, min(int(bins), max(8, len(xs))))
+        # Liczba przedziałów musi być DUŻO mniejsza niż liczba próbek — inaczej w każdym
+        # przedziale jest 0–1 próbek, powstają dziury i „średnia” wygląda jak surowe dane.
+        # Cel: kilka próbek na przedział (im więcej, tym gładsza charakterystyka).
+        bins = max(6, min(int(bins), len(xs) // 5))
         edges = np.linspace(lo, hi, bins + 1)
         idx = np.clip(np.digitize(xs, edges) - 1, 0, bins - 1)
         sums = np.bincount(idx, weights=ys, minlength=bins)
         counts = np.bincount(idx, minlength=bins)
         centers = (edges[:-1] + edges[1:]) / 2.0
         mean = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+        if smooth:
+            mean = LogData._smooth3(mean)
         return centers, mean
+
+    @staticmethod
+    def _smooth3(values: np.ndarray) -> np.ndarray:
+        """Lekkie wygładzenie (średnia ruchoma z 3 przedziałów), puste przedziały zostają puste."""
+        n = len(values)
+        if n < 3:
+            return values
+        out = values.copy()
+        for i in range(1, n - 1):
+            window = values[i - 1:i + 2]
+            window = window[np.isfinite(window)]
+            if np.isfinite(values[i]) and len(window):
+                out[i] = float(window.mean())
+        return out
 
     @staticmethod
     def _gap_limit(t: np.ndarray) -> float:
