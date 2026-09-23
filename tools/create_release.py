@@ -146,7 +146,12 @@ def main() -> int:
             raise
     if existing:
         print(f"Wydanie {tag} już istnieje: {existing.get('html_url')}")
-        release = existing
+        if existing.get("body", "").strip() != NOTES.strip():
+            release = api(token, "PATCH", f"{API}/repos/{REPO}/releases/{existing['id']}",
+                          payload={"body": NOTES})
+            print("Zaktualizowano opis wydania")
+        else:
+            release = existing
     else:
         release = api(token, "POST", f"{API}/repos/{REPO}/releases", payload={
             "tag_name": tag,
