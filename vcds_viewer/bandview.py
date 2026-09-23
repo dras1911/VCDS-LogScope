@@ -81,6 +81,24 @@ class BandsChart(QtWidgets.QWidget):
     def set_snap(self, on: bool):
         self._snap = on
 
+    def ensure_visible(self, x: float, margin: float = 0.08):
+        """Przesuwa widok w poziomie (bez zmiany przybliżenia), żeby x był widoczny."""
+        lanes = [lane for lane in self.visible_lanes() if lane.plot is not None]
+        if not lanes:
+            return
+        vb = lanes[0].plot.vb
+        lo, hi = vb.viewRange()[0]
+        span = hi - lo
+        if span <= 0:
+            return
+        pad = span * margin
+        if lo + pad <= x <= hi - pad:
+            return
+        if x < lo + pad:
+            vb.setXRange(x - pad, x - pad + span, padding=0.0)
+        else:
+            vb.setXRange(x + pad - span, x + pad, padding=0.0)
+
     def set_x_axis(self, mode: str, unit: str, label: str):
         self._x_mode, self._x_unit = mode, unit
         self._axis_label = label

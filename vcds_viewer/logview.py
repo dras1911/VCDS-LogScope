@@ -146,6 +146,7 @@ class LogView(QtWidgets.QWidget):
         self.theme = theme
         self.x_mode = X_TIME
         self._follow_table = True
+        self._cursor_time: Optional[float] = None   # czas kursora, gdy ustawia go tabela
 
         self.chart = LogChart(theme, self)
         self.bands = BandsChart(theme, self)
@@ -257,6 +258,11 @@ class LogView(QtWidgets.QWidget):
 
         self.chk_follow = QtWidgets.QCheckBox("Tabela podąża za kursorem")
         self.chk_follow.setChecked(True)
+        self.chk_follow.setToolTip(
+            "Przewijanie tabeli razem z kursorem wykresu.\n"
+            "Przy osi czasu działa liniowo. Przy osi obrotów kursor przeskakuje między\n"
+            "przebiegami (wiele próbek ma te same obroty), więc tabela może się cofać."
+        )
         self.chk_follow.toggled.connect(lambda v: setattr(self, "_follow_table", v))
         lay.addWidget(self.chk_follow)
 
@@ -369,7 +375,8 @@ class LogView(QtWidgets.QWidget):
             segments = self.log.rpm_segments()
             if len(segments) > 1:
                 text = (f"Oś X = obroty: linie podzielone na {len(segments)} przebiegi i posortowane "
-                        "po obrotach (bez pętli). Obroty nie są rysowane jako seria — są osią X.")
+                        "po obrotach (bez pętli). Obroty są osią, nie serią. Wiersz tabeli odpowiada "
+                        "jednej wartości obrotów, więc kursor może przeskakiwać między przebiegami.")
             else:
                 text = "Oś X = obroty (obroty są osią, nie serią)."
             self._set_hint(text)
@@ -451,7 +458,8 @@ class LogView(QtWidgets.QWidget):
             target.set_cursor_x(x, emit=False, snap=False)
         except TypeError:
             target.set_cursor_x(x, emit=False)
-        t = x if self.x_mode == X_TIME else self._time_for_rpm(x)
+        t = self._cursor_time if self._cursor_time is not None else (
+            x if self.x_mode == X_TIME else self._time_for_rpm(x))
         rpm = self.log.rpm_nearest(t) if t is not None else None
         if t is not None:
             self.table.highlight_time(t, follow=self._follow_table)
@@ -475,13 +483,25 @@ class LogView(QtWidgets.QWidget):
         return f"{fmt_num(t, 2)} s" if t is not None else ""
 
     def set_cursor_time(self, t: float):
-        """Ustawia kursor wg czasu (np. po kliknięciu wiersza tabeli)."""
-        if self.x_mode == X_TIME:
-            self.chart.set_cursor_x(t, snap=True)
-        else:
-            rpm = self.log.rpm_at(t)
-            if rpm is not None:
-                self.chart.set_cursor_x(rpm, snap=True)
+        """Ustawia kursor wg czasu (np. po kliknięciu wiersza tabeli).
+
+        Przy osi obrotów czas jest znany dokładnie, więc zapamiętujemy go na czas ustawiania
+        kursora — inaczej odczyt z osi obrotów (wiele próbek ma te same obroty) cofałby
+        podświetlenie tabeli na wiersz o tych samych obrotach, ale z innego przebiegu.
+        """
+        self._cursor_time = float(t)
+        try:
+            if self.x_mode == X_TIME:
+                x = float(t)
+            else:
+                rpm = self.log.rpm_at(t)
+                if rpm is None:
+                    return
+                x = float(rpm)
+            self.chart.set_cursor_x(x, snap=True)
+            self._active_view().ensure_visible(self.chart.cursor_x() or x)
+        finally:
+            self._cursor_time = None
 
     def _on_row_clicked(self, t: float):
         """Klik w wiersz tabeli ustawia kursor wykresu."""
@@ -504,4 +524,4 @@ class LogView(QtWidgets.QWidget):
         self.table.setVisible(on)
 
     def set_chart_visible(self, on: bool):
-        self.chart.setVisible(on)
+        self.view_stack.setVisible(on)      # chowamy oba widoki (nakładany i pasma) razem

@@ -260,6 +260,24 @@ class LogChart(QtWidgets.QWidget):
     def set_snap(self, on: bool):
         self._snap = on
 
+    def ensure_visible(self, x: float, margin: float = 0.08):
+        """Przesuwa widok w poziomie (bez zmiany przybliżenia), żeby x był widoczny.
+
+        Potrzebne, gdy kursor ustawia tabela: przy osi obrotów wiersz tabeli może wypaść
+        poza aktualnie oglądany zakres i kursor zniknąłby z ekranu.
+        """
+        lo, hi = self.plot.vb.viewRange()[0]
+        span = hi - lo
+        if span <= 0:
+            return
+        pad = span * margin
+        if lo + pad <= x <= hi - pad:
+            return
+        if x < lo + pad:
+            self.plot.vb.setXRange(x - pad, x - pad + span, padding=0.0)
+        else:
+            self.plot.vb.setXRange(x + pad - span, x + pad, padding=0.0)
+
     def fit(self):
         """Dopasowuje widok do widocznych danych."""
         self._user_zoomed = False
