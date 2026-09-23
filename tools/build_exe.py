@@ -121,22 +121,36 @@ def build(icon: Path, onefile: bool = False, legacy: bool = False) -> Path:
 
 
 def smoke_test(exe: Path) -> bool:
-    """Uruchamia autotest spakowanej aplikacji (--selftest) i sprawdza wynik."""
+    """Uruchamia autotest spakowanej aplikacji i sprawdza wynik.
+
+    Sprawdza dwie rzeczy: tryb bezokienkowy (--selftest) oraz PEŁNY start GUI
+    z pętlą zdarzeń (--selftest-gui) — to drugie łapie błędy typu `exec_()` vs `exec()`.
+    """
     out = BUILD / "selftest_exe"
     out.mkdir(parents=True, exist_ok=True)
-    sample = ROOT / "LOG-01-031-002-011-V10.CSV"
-    cmd = [str(exe), "--selftest"]
+    sample = ROOT / "tests" / "data" / "przyklad.csv"
+    base = [str(exe)]
     if sample.exists():
-        cmd.append(str(sample))
-    cmd.append(str(out))
-    print("Autotest paczki:", " ".join(cmd[:2]), "...")
-    res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+        base.append(str(sample))
+
+    print("Autotest paczki (bez okna):", exe.name, "…")
+    res = subprocess.run(base + ["--selftest", str(out)], cwd=str(ROOT),
+                         capture_output=True, text=True, timeout=300)
     report = out / "selftest_report.txt"
     text = report.read_text(encoding="utf-8") if report.exists() else (res.stdout or res.stderr or "")
-    print(text.strip())
-    ok = res.returncode == 0 and "SELFTEST: OK" in text
-    print("Autotest:", "OK" if ok else f"BŁĄD (kod {res.returncode})")
-    return ok
+    print(text.strip()[-400:])
+    ok_headless = res.returncode == 0 and "SELFTEST: OK" in text
+
+    print("Autotest paczki (pełne GUI):", exe.name, "…")
+    res_gui = subprocess.run(base + ["--selftest-gui"], cwd=str(ROOT),
+                             capture_output=True, text=True, timeout=300)
+    ok_gui = res_gui.returncode == 0
+    if not ok_gui:
+        print("  BŁĄD GUI:", (res_gui.stderr or res_gui.stdout or "")[-500:])
+
+    print(f"Autotest: {'OK' if (ok_headless and ok_gui) else 'BŁĄD'} "
+          f"(bez okna: {'OK' if ok_headless else 'BŁĄD'}, GUI: {'OK' if ok_gui else 'BŁĄD'})")
+    return ok_headless and ok_gui
 
 
 def make_shortcut(exe: Path) -> None:

@@ -10,6 +10,7 @@ from .qt import QtCore, QtWidgets
 
 from . import APP_NAME
 from .mainwindow import MainWindow, app_icon
+from .qt import exec_app
 
 
 def _selftest(argv: list[str]) -> int:
@@ -83,7 +84,13 @@ def main() -> int:
     app.setWindowIcon(app_icon())
     win = MainWindow()
     win.show()
-    return app.exec()
+    if "--selftest-gui" in sys.argv:
+        # test dymny: pełny start GUI (z pętlą zdarzeń), zamyka się sam po 4 sekundach
+        log_path = next((a for a in sys.argv[1:] if a.lower().endswith((".csv", ".txt"))), None)
+        if log_path:
+            win.open_path(log_path)
+        QtCore.QTimer.singleShot(4000, app.quit)
+    return exec_app(app)
 
 
 if __name__ == "__main__":

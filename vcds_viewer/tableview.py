@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
+from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal, exec_menu
 
 from .colors import color_map
 from .formatting import fmt_num, fmt_time
@@ -518,4 +518,4 @@ class LogTable(QtWidgets.QWidget):
             act.setCheckable(True)
             act.setChecked(not self.view.isColumnHidden(i))
             act.triggered.connect(lambda checked, idx=i: self.view.setColumnHidden(idx, not checked))
-        menu.exec(self.header.mapToGlobal(pos))
+        exec_menu(menu, self.header.mapToGlobal(pos))

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .qt import QAction, QSettings, Qt, QtCore, QtGui, QtWidgets, Signal
+from .qt import QAction, QSettings, Qt, QtCore, QtGui, QtWidgets, Signal, exec_dialog
 
 from . import APP_NAME, APP_TITLE, __version__
 from .compare import CompareView
@@ -340,7 +340,7 @@ class MainWindow(QtWidgets.QMainWindow):
         open_logs = [w.log for i in range(self.tabs.count())
                      if isinstance((w := self.tabs.widget(i)), LogView)]
         dlg = CompareDialog(open_logs, self)
-        if dlg.exec() != QtWidgets.QDialog.Accepted:
+        if exec_dialog(dlg) != QtWidgets.QDialog.Accepted:
             return
         logs = dlg.selected()
         if len(logs) < 2:

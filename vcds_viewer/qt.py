@@ -25,7 +25,23 @@ QAction = QtWidgets.QAction if QT_API == "PySide2" else QtGui.QAction
 # W Qt 5 nie ma typu wyliczeniowego Qt.PenStyle — używamy zwykłego int.
 PenStyle = getattr(Qt, "PenStyle", int)
 
+
+def exec_app(app) -> int:
+    """Uruchamia pętlę zdarzeń (Qt 5: exec_(), Qt 6: exec())."""
+    return app.exec() if hasattr(app, "exec") else app.exec_()
+
+
+def exec_dialog(dialog) -> int:
+    """Pokazuje okno modalne (Qt 5: exec_(), Qt 6: exec())."""
+    return dialog.exec() if hasattr(dialog, "exec") else dialog.exec_()
+
+
+def exec_menu(menu, pos):
+    """Pokazuje menu kontekstowe (Qt 5: exec_(), Qt 6: exec())."""
+    return menu.exec(pos) if hasattr(menu, "exec") else menu.exec_(pos)
+
+
 __all__ = [
     "QT_API", "QtCore", "QtGui", "QtWidgets", "Qt", "Signal", "Slot",
-    "QSettings", "QAction", "PenStyle",
+    "QSettings", "QAction", "PenStyle", "exec_app", "exec_dialog", "exec_menu",
 ]

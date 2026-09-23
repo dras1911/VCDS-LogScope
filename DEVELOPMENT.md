@@ -51,9 +51,13 @@ Autotest (działa bez GUI — przydatny po każdej zmianie):
 
 ```
 "dist\onefile\VCDS LogScope.exe" --selftest tests\data\przyklad.csv build\selftest
+"dist\onefile\VCDS LogScope.exe" --selftest-gui tests\data\przyklad.csv   # pełne GUI, zamyka się po 4 s
 ```
 
-Wczytuje log, buduje wykres i widok porównania, zapisuje zrzuty PNG oraz `selftest_report.txt`.
+Pierwszy tryb wczytuje log, buduje wykres i widok porównania, zapisuje zrzuty PNG oraz
+`selftest_report.txt`. Drugi uruchamia **prawdziwe okno z pętlą zdarzeń** — tylko on wyłapuje
+błędy startu GUI (np. `QApplication.exec` w Qt 5 to `exec_`). `build_exe.py` uruchamia oba
+po każdym budowaniu.
 
 ### Pułapki pakowania (sprawdzone boleśnie)
 
