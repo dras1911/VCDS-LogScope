@@ -101,7 +101,14 @@ def api(token: str, method: str, url: str, payload=None, content_type="applicati
         raise
 
 
-def upload_asset(token: str, release_id: int, path: Path) -> str:
+def upload_asset(token: str, release_id: int, path: Path, replace: bool = True) -> str:
+    """Wgrywa plik jako załącznik wydania (z opcją podmiany istniejącego)."""
+    if replace:
+        for asset in api(token, "GET", f"{API}/repos/{REPO}/releases/{release_id}/assets"):
+            if asset["name"] in (path.name, path.name.replace(" ", ".")):
+                api(token, "DELETE",
+                    f"{API}/repos/{REPO}/releases/assets/{asset['id']}")
+                print(f"Usunięto poprzedni załącznik: {asset['name']}")
     ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     url = f"{UPLOADS}/repos/{REPO}/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}"
     print(f"Wgrywam {path.name} ({path.stat().st_size / 1e6:.1f} MB)…")

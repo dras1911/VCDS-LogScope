@@ -4,6 +4,9 @@ Czytelna wizualizacja logów z programu **VCDS / VAG-COM** — program desktopow
 (Python + PySide6 + pyqtgraph). Zamiast surowego eksportu CSV dostajesz wykres nakładany
 w stylu TuneZilla, tabelę z kolorowaniem narastającym i porównywanie wielu logów.
 
+**Repozytorium:** https://github.com/dras1911/VCDS-LogScope
+**Pobierz (wydanie 1.0):** https://github.com/dras1911/VCDS-LogScope/releases/tag/v1.0
+
 ![Wykres](docs/wykres.png)
 
 ## Co potrafi
