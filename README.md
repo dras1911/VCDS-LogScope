@@ -6,6 +6,7 @@ i możliwość porównania kilku logów między sobą.
 
 **[⬇ Pobierz najnowszą wersję](https://github.com/dras1911/VCDS-LogScope/releases/latest)**
 &nbsp;•&nbsp; **[Zgłoś problem lub pomysł](https://github.com/dras1911/VCDS-LogScope/issues)**
+&nbsp;•&nbsp; **[☕ Wspomóż projekt](https://buymeacoffee.com/dras1911)**
 
 ![Wykres](docs/wykres.png)
 
@@ -94,6 +95,13 @@ np. `Stab.b.jałowego #1`, `#2`. Nazwa grupy jest w nagłówku kolumny.
 
 ## Autor i licencja
 
-Bartus ([@dras1911](https://github.com/dras1911)). Licencja MIT — szczegóły w pliku [LICENSE](LICENSE).
+**Bartosz Dej** ([@dras1911](https://github.com/dras1911)). Licencja MIT — szczegóły w pliku [LICENSE](LICENSE).
+
+Program jest darmowy i taki pozostanie. Jeśli oszczędza Ci czas w warsztacie i chcesz
+wesprzeć jego dalszy rozwój:
+
+[![Wspomóż projekt](https://img.shields.io/badge/%E2%98%95%20Wspom%C3%B3%C5%BC%20projekt-Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge)](https://buymeacoffee.com/dras1911)
+
+Dziękuję! Każda kawa to konkretny powód, żeby dorzucić kolejną funkcję.
 
 Informacje techniczne (budowanie, testy, struktura kodu) są w [DEVELOPMENT.md](DEVELOPMENT.md).

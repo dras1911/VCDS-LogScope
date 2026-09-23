@@ -69,6 +69,13 @@ ani internetu. Logi nie są nigdzie wysyłane.
 4. `Ctrl+T` — porównanie dwóch logów
 
 Opis programu: [README](https://github.com/dras1911/VCDS-LogScope#readme)
+
+---
+
+Program jest darmowy i taki pozostanie. Jeśli oszczędza Ci czas w warsztacie,
+możesz wesprzeć jego rozwój: **[☕ buymeacoffee.com/dras1911](https://buymeacoffee.com/dras1911)**
+
+Autor: **Bartosz Dej** ([@dras1911](https://github.com/dras1911)) • licencja MIT
 """
 
 

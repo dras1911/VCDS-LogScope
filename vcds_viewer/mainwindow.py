@@ -430,7 +430,10 @@ class MainWindow(QtWidgets.QMainWindow):
             "<p>Czytelna wizualizacja logów z programu VCDS (VAG-COM).</p>"
             "<p>Wykres nakładany z kursorem pomiarowym, tabela z kolorowaniem narastającym, "
             "porównanie wielu logów (różnice parametrów).</p>"
-            f"<p>Zbudowano na {QT_API} + pyqtgraph.</p>",
+            "<p><b>Autor:</b> Bartosz Dej (dras1911)</p>"
+            "<p><a href='https://buymeacoffee.com/dras1911'>"
+            "☕ Wspomóż projekt — buymeacoffee.com/dras1911</a></p>"
+            f"<p style='color:#9aa0a6;'>Zbudowano na {QT_API} + pyqtgraph.</p>",
         )
 
     # ------------------------------------------------------------ ostatnie pliki
