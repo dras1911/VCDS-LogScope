@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -126,7 +127,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowIcon(app_icon())
         self.resize(1600, 980)
         self.setAcceptDrops(True)
-        self.settings = QSettings("VCDS-LogScope", "VCDS-LogScope")
+        # Zakres ustawień można nadpisać zmienną środowiskową — dzięki temu skrypty
+        # testowe (zrzuty ekranu, autotesty) nie zaśmiecają konfiguracji użytkownika.
+        scope = os.environ.get("VCDS_LOGSCOPE_SETTINGS", "VCDS-LogScope")
+        self.settings = QSettings(scope, scope)
 
         theme_name = self.settings.value("theme", "dark")
         self.theme: Theme = THEMES.get(str(theme_name), DARK)

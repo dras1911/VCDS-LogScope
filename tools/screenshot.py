@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("VCDS_LOGSCOPE_SETTINGS", "VCDS-LogScope-test")
 os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
 ROOT = Path(__file__).resolve().parents[1]
