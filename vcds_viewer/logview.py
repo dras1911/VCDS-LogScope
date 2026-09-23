@@ -390,7 +390,14 @@ class LogView(QtWidgets.QWidget):
         """Podpowiedzi kontekstowe: normalizacja przy różnych zakresach, przebiegi przy osi obrotów."""
         if self.x_mode == X_RPM:
             segments = self.log.rpm_segments()
-            if len(segments) > 1:
+            points = self.cmb_draw.currentData() == "points"
+            if points:
+                text = ("Oś X = obroty: każda próbka to osobny punkt. Przy tych samych obrotach różne "
+                        "momenty mają różne wartości, więc linia tworzyłaby zygzaki — włącz "
+                        "„Rysowanie: Linia”, aby zobaczyć przebiegi.")
+                if len(segments) > 1:
+                    text += f" Danych jest {len(segments)} przebiegów."
+            elif len(segments) > 1:
                 text = (f"Oś X = obroty: linie podzielone na {len(segments)} przebiegi i posortowane "
                         "po obrotach (bez pętli). Obroty są osią, nie serią. Wiersz tabeli odpowiada "
                         "jednej wartości obrotów, więc kursor może przeskakiwać między przebiegami.")
