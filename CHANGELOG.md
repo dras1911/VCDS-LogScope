@@ -3,6 +3,14 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.4 — 23 września 2026
+
+**Poprawione**
+
+- **Lista parametrów w porównaniu logów** pokazuje teraz przy każdej pozycji, gdzie występuje:
+  `[A+B]` — w obu logach, `[tylko B]` — tylko w jednym. Znacznik stoi **na początku** pozycji,
+  więc nie zniknie, gdy nazwa parametru jest ucinana przy wąskim panelu. Nad listą jest legenda.
+
 ## 1.0.3 — 23 września 2026
 
 **Nowe**

@@ -82,6 +82,25 @@ def test_parameter_present_in_one_log_is_marked(view):
     assert len(params) > len([p for p in params if p.common])
 
 
+def test_param_list_marks_where_each_parameter_occurs(view):
+    """Znacznik [A+B] / [tylko X] musi być na POCZĄTKU pozycji — inaczej bywa ucinany."""
+    view.refresh()
+    texts = [view.param_list.item(i).text() for i in range(view.param_list.count())]
+    assert texts
+    for t in texts:
+        assert t.lstrip().startswith("["), t
+    assert any(t.startswith("[A+B]") for t in texts)
+
+
+def test_marker_for_parameter_present_in_one_log(view):
+    """Parametr z jednego logu dostaje znacznik [tylko A] / [tylko B]."""
+    reduced = _log_without_first_channel(view.logs[0])
+    v2 = CompareView([view.logs[0], reduced], DARK)
+    v2.refresh()
+    texts = [v2.param_list.item(i).text() for i in range(v2.param_list.count())]
+    assert any(t.startswith("[tylko A]") for t in texts), texts[:5]
+
+
 def test_diff_table_has_columns_for_single_log_params(view):
     """Tabela różnic nie może się wywalać na parametrach z jednego logu."""
     logs = view.logs

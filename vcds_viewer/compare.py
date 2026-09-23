@@ -399,6 +399,14 @@ class CompareView(QtWidgets.QWidget):
         head2 = QtWidgets.QLabel("Parametry")
         head2.setStyleSheet("font-weight:600;")
         lay.addWidget(head2)
+
+        legend = QtWidgets.QLabel(
+            f"<span style='color:#9aa0a6;'>[{' + '.join(self.tags)}] — w obu logach"
+            f"<br>[tylko X] — tylko w jednym z logów</span>"
+        )
+        legend.setObjectName("hint")
+        legend.setWordWrap(True)
+        lay.addWidget(legend)
         btn_row = QtWidgets.QHBoxLayout()
         b_all = QtWidgets.QPushButton("Wszystkie")
         b_none = QtWidgets.QPushButton("Żadne")
@@ -528,11 +536,15 @@ class CompareView(QtWidgets.QWidget):
         # --- panel parametrów
         self.param_list.blockSignals(True)
         self.param_list.clear()
+        all_tags = "+".join(self.tags)
         for prm in self.params:
             group = f"  (gr. {prm.group})" if prm.group else ""
             unit = f"  [{prm.unit}]" if prm.unit else ""
-            mark = "" if prm.common else "  (tylko " + ", ".join(self.tags[i] for i in prm.logs) + ")"
-            item = QtWidgets.QListWidgetItem(f"{prm.name}{group}{unit}{mark}")
+            # znacznik na POCZĄTKU pozycji — przy wąskim panelu nazwa bywa ucinana,
+            # a informacja „w których logach jest ten parametr” musi zostać widoczna
+            mark = (f"[{all_tags}]" if prm.common
+                    else "[tylko " + ", ".join(self.tags[i] for i in prm.logs) + "]")
+            item = QtWidgets.QListWidgetItem(f"{mark:<11}{prm.name}{group}{unit}")
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked if self.param_checks.get(prm.key, True) else Qt.Unchecked)
             item.setData(Qt.UserRole, prm.key)
