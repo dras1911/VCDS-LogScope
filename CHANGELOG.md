@@ -3,6 +3,24 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.5 — 24 września 2026
+
+**Nowe**
+
+- **Porównanie logów — wybór logu bazowego.** W lewym panelu wybierasz, do którego logu
+  porównywane są pozostałe. Różnice (Δ) liczone są zawsze jako: drugi log − log bazowy,
+  a nagłówki tabeli i statystyk pokazują, względem czego liczą (np. `Δ A−B`).
+- **Automatyczne dopasowanie w czasie.** Program sam znajduje przesunięcie, przy którym
+  oba logi pokrywają się najlepiej (porównuje wspólne parametry po kształcie, odpornie na
+  różne tempo jazdy) i od razu tak ustawia wykresy. Przycisk **„Dopasuj w czasie”**
+  przelicza to ponownie, a obok widać wynik, np.
+  „Dopasowano w czasie: log B przesunięty o −5,04 s (zgodność 0,61, 4 wspólnych parametrów)”.
+  Gdy logi pochodzą z różnych przejazdów, program mówi o tym wprost zamiast dopasowywać na siłę.
+- **Oś obrotów w porównaniu działa** — wcześniej przełączenie osi na obroty w oknie
+  porównania kończyło się cichym błędem i wykres się nie zmieniał. Teraz oba logi można
+  zestawić po obrotach silnika (charakterystyka parametru niezależnie od momentu jazdy).
+  Przy osi obrotów pole przesunięcia jest wyszarzone — tam przesunięcie w czasie nie ma sensu.
+
 ## 1.0.4 — 23 września 2026
 
 **Poprawione**

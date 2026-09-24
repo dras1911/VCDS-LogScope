@@ -454,3 +454,121 @@ class LogData:
         mine = self.match_index()
         theirs = other.match_index()
         return [k for k in mine if k in theirs]
+
+
+# ---------------------------------------------------------------- dopasowanie w czasie
+def _moving_average(y: np.ndarray, win: int) -> np.ndarray:
+    """Średnia ruchoma z dopełnieniem brzegów (do usunięcia wolnego trendu)."""
+    if win < 3:
+        return y
+    k = np.ones(win) / win
+    pad = win // 2
+    yp = np.pad(y, pad, mode="edge")
+    return np.convolve(yp, k, mode="same")[pad:pad + len(y)]
+
+
+def _detrend_zscore(y: np.ndarray, win: int) -> np.ndarray:
+    """Usuwa wolny trend i normalizuje — dzięki temu korelacja patrzy na kształt, nie na poziom."""
+    y = np.asarray(y, dtype=float)
+    if win >= 3:
+        y = y - _moving_average(y, win)
+    finite = np.isfinite(y)
+    if finite.sum() < 2:
+        return y
+    sd = float(np.std(y[finite]))
+    if sd < 1e-12:
+        return y * np.nan
+    return (y - float(np.mean(y[finite]))) / sd
+
+
+def _channel_xy(ch) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    t = np.asarray(ch.t, dtype=float)
+    y = np.asarray(ch.y, dtype=float)
+    m = np.isfinite(t) & np.isfinite(y)
+    if m.sum() < 5:
+        return None
+    return t[m], y[m]
+
+
+def best_time_offset(ref: "LogData", other: "LogData", keys=None, max_shift: float = 20.0,
+                     coarse: float = 0.1, fine: float = 0.02
+                     ) -> Optional[tuple[float, float, float, int]]:
+    """Szuka przesunięcia w czasie, przy którym log `other` pokrywa się z `ref`.
+
+    Porównuje wspólne parametry po kształcie (wolny trend jest usuwany — inaczej
+    oba logi „zgadzają się” wszędzie, bo oba rosną i maleją razem). Szuka metodą
+    korelacji krzyżowej: najpierw zgrubnie co `coarse` s, potem dokładnie co `fine` s.
+
+    Zwraca `(przesunięcie, zgodność, kontrast, liczba_kanałów)` albo `None`, gdy nie ma
+    czego dopasowywać. Przesunięcie dodaje się do czasów logu `other` — dodatnie odsuwa
+    jego wykres w prawo (tak samo działa „Przesunięcie B” w oknie porównania).
+    """
+    pairs: list[tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]] = []
+    if keys is None:
+        keys = ref.common_keys(other)
+    for key in keys:
+        ca, cb = ref.find(key), other.find(key)
+        if ca is None or cb is None or not ca.has_data or not cb.has_data:
+            continue
+        pa, pb = _channel_xy(ca), _channel_xy(cb)
+        if pa is None or pb is None:
+            continue
+        pairs.append((pa, pb))
+    if not pairs:
+        return None
+    if len(pairs) > 8:
+        # do dopasowania wystarczy kilka najbardziej „żywych” parametrów,
+        # a mniej kanałów = szybsze liczenie
+        pairs.sort(key=lambda p: -float(np.std(p[0][1])))
+        pairs = pairs[:8]
+
+    t0r = min(p[0][0][0] for p in pairs)
+    t1r = max(p[0][0][-1] for p in pairs)
+    t0o = min(p[1][0][0] for p in pairs)
+    t1o = max(p[1][0][-1] for p in pairs)
+    span = min(t1r - t0r, t1o - t0o)
+    limit = min(max_shift, max(0.0, span / 3.0))
+    if limit < 0.2:
+        return None
+    # okno wspólne dla KAŻDEGO przesunięcia z zakresu — inaczej brzegi fałszują wynik
+    w0 = max(t0r, t0o + limit)
+    w1 = min(t1r, t1o - limit)
+    if w1 - w0 < 2.0:
+        return None
+
+    def profile(step: float, offsets: np.ndarray) -> list[tuple[float, float]]:
+        # bezpiecznik wydajności: przy długich logach przerzedzamy siatkę,
+        # żeby dopasowanie nie zamrażało okna (wynik zmienia się wtedy o setne sekundy)
+        if (w1 - w0) / step > 3000:
+            step = (w1 - w0) / 3000
+        grid = np.arange(w0, w1 + step, step)
+        win = max(3, int(2.0 / step))
+        refs = [_detrend_zscore(np.interp(grid, ta, ya, left=np.nan, right=np.nan), win)
+                for (ta, ya), _ in pairs]
+        out: list[tuple[float, float]] = []
+        for off in offsets:
+            scores = []
+            for rv, ((_, _), (tb, yb)) in zip(refs, pairs):
+                ov = _detrend_zscore(np.interp(grid - off, tb, yb, left=np.nan, right=np.nan), win)
+                m = np.isfinite(rv) & np.isfinite(ov)
+                if m.sum() < 20:
+                    continue
+                x, y = rv[m], ov[m]
+                if np.std(x) < 1e-12 or np.std(y) < 1e-12:
+                    continue
+                scores.append(float(np.corrcoef(x, y)[0, 1]))
+            out.append((float(off), float(np.mean(scores)) if scores else -2.0))
+        return out
+
+    coarse_offsets = np.arange(-limit, limit + coarse / 2, coarse)
+    prof = profile(coarse, coarse_offsets)
+    if not prof:
+        return None
+    best_off, _ = max(prof, key=lambda p: p[1])
+    fine_offsets = np.arange(best_off - coarse, best_off + coarse + fine / 2, fine)
+    fine_prof = profile(fine, fine_offsets)
+    best_off, best_score = max(fine_prof, key=lambda p: p[1])
+    values = np.array([v for _, v in prof], dtype=float)
+    contrast = best_score - float(np.median(values))
+    used = max(1, sum(1 for _ in pairs))
+    return round(float(best_off), 2), float(best_score), float(contrast), used

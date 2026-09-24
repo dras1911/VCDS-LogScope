@@ -146,6 +146,16 @@ def stylesheet(t: Theme) -> str:
     }}
     QComboBox::drop-down {{ border: none; width: 18px; }}
     QComboBox QAbstractItemView {{ background: {t.panel}; border: 1px solid {t.border}; }}
+    /* nieaktywne pola (np. „Przesunięcie” przy osi obrotów) — wyraźnie wyszarzone */
+    QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
+        color: {t.text_dim}; background: {t.panel}; border: 1px solid {t.border};
+    }}
+    QSpinBox:disabled QLineEdit, QDoubleSpinBox:disabled QLineEdit {{
+        color: {t.text_dim}; background: {t.panel};
+    }}
+    QDoubleSpinBox:disabled::up-button, QDoubleSpinBox:disabled::down-button,
+    QSpinBox:disabled::up-button, QSpinBox:disabled::down-button {{ background: {t.panel}; }}
+    QLabel:disabled {{ color: {t.text_dim}; }}
 
     QCheckBox {{ spacing: 6px; }}
     QCheckBox::indicator {{

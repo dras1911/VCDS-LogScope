@@ -30,7 +30,7 @@ i możliwość porównania kilku logów między sobą.
 - przy osi obrotów program dzieli dane na **przebiegi** (każde przyspieszanie osobno) i sortuje
   je po obrotach — linie nie tworzą wtedy pętli, a kolejne przyrosty można nakładać na siebie
   i porównywać; obroty przestają być wtedy rysowane jako seria, bo są osią
-- „Normalizuj 0–100%” przydaje się w widoku nakładanym, gdy parametry mają bardzo różne wartości
+- „Normalizuj” przydaje się w widoku nakładanym, gdy parametry mają bardzo różne wartości
   (obroty 0–6000, a temperatura 80–90) — wtedy widać kształt każdej linii
 
 **2. Tabela z kolorowaniem**
@@ -41,9 +41,15 @@ i możliwość porównania kilku logów między sobą.
 
 **3. Porównanie dwóch lub więcej logów** (`Ctrl+T`)
 - log A linią ciągłą, log B przerywaną — te same parametry w tym samym kolorze
-- tabela różnic: pokazuje, ile log B ma więcej lub mniej niż log A w każdym momencie
+- **wybór logu bazowego**: wskazujesz, do którego logu porównywane są pozostałe, a różnice
+  liczone są jako drugi log − log bazowy
+- **automatyczne dopasowanie w czasie**: program sam znajduje przesunięcie, przy którym oba
+  logi pokrywają się najlepiej (np. gdy jeden zapis startował kilka sekund później) — nie
+  trzeba szukać wartości na oko; przycisk „Dopasuj w czasie” przelicza to ponownie
+- tabela różnic: pokazuje, ile drugi log ma więcej lub mniej niż bazowy w każdym momencie
 - statystyki: minimum, maksimum, średnia dla każdego logu i największa różnica
-- przesunięcie czasowe, gdy logi startowały w różnych momentach jazdy
+- wykresy można zestawić także **po obrotach silnika** — wtedy porównujesz charakterystykę
+  parametru (np. ile wynosi przy 3000 obr/min), niezależnie od momentu jazdy
 
 **4. Wszystko działa lokalnie** — logi nie są nigdzie wysyłane, program nie potrzebuje internetu.
 
@@ -111,7 +117,7 @@ np. `Stab.b.jałowego #1`, `#2`. Nazwa grupy jest w nagłówku kolumny.
 **Wykres jest nieczytelny, gdy włączę wszystkie parametry naraz**
 Przy 6 i więcej parametrach przełącz **Widok: Pasma** — każdy parametr dostaje wtedy osobny
 pas z własną skalą i nic na siebie nie nachodzi. W widoku nakładanym pomaga też wyłączenie
-zbędnych parametrów w panelu po lewej albo „Normalizuj 0–100%”.
+zbędnych parametrów w panelu po lewej albo „Normalizuj”.
 
 ## Autor i licencja
 

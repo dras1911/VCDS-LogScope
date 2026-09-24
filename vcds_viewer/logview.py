@@ -433,11 +433,11 @@ class LogView(QtWidgets.QWidget):
         if visible >= 6 and ratio > 25:
             self._set_hint(
                 f"Widok nakładany z {visible} seriami o bardzo różnych zakresach bywa nieczytelny — "
-                "przełącz „Widok: Pasma” albo włącz „Normalizuj 0–100%”."
+                "przełącz „Widok: Pasma” albo włącz „Normalizuj”."
             )
             return
         self._set_hint(
-            "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
+            "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj”, "
             "aby widzieć kształt każdej serii"
             if ratio > 25 else ""
         )

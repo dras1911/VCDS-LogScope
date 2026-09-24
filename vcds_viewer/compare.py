@@ -12,7 +12,7 @@ from .chartview import LogChart, SeriesSpec
 from .colors import color_for, color_map
 from .flowlayout import FlowLayout
 from .formatting import fmt_delta, fmt_num, fmt_time
-from .model import X_RPM, X_TIME, LogData
+from .model import X_RPM, X_TIME, LogData, best_time_offset
 from .tableview import fit_column_widths
 from .theme import Theme
 
@@ -41,6 +41,17 @@ class CompareParam:
     common: bool = True               # czy jest we wszystkich porównywanych logach
 
 
+def base_index(prm: "CompareParam", base: int) -> int:
+    """Indeks logu bazowego dla parametru.
+
+    Jeśli parametru nie ma w logu bazowym (np. mierzył go tylko drugi sterownik),
+    bierzemy pierwszy log, w którym on jednak jest — żeby dało się go obejrzeć.
+    """
+    if base in prm.logs:
+        return base
+    return prm.logs[0] if prm.logs else 0
+
+
 def interp_series(t: np.ndarray, y: np.ndarray, grid: np.ndarray) -> np.ndarray:
     """Interpolacja serii na wspólną siatkę czasu (z pominięciem NaN)."""
     t = np.asarray(t, dtype=float)
@@ -60,15 +71,18 @@ class CompareTableModel(QtCore.QAbstractTableModel):
         self.grid: np.ndarray = np.array([])
         self.params: list[CompareParam] = []
         self.tags: list[str] = []
+        self.base = 0                  # indeks logu bazowego (do którego liczymy różnice)
         self.heatmap = True
         self.show_b_values = False
         self._cols: list[tuple[str, int, int]] = []   # (rodzaj, indeks parametru, indeks logu)
 
-    def set_data(self, grid: np.ndarray, params: list[CompareParam], tags: list[str]):
+    def set_data(self, grid: np.ndarray, params: list[CompareParam], tags: list[str],
+                 base: int = 0):
         self.beginResetModel()
         self.grid = grid
         self.params = params
         self.tags = tags
+        self.base = int(base)
         self._build_cols()
         self.endResetModel()
 
@@ -78,13 +92,17 @@ class CompareTableModel(QtCore.QAbstractTableModel):
         self._build_cols()
         self.endResetModel()
 
+    def _base_for(self, prm: CompareParam) -> int:
+        """Indeks logu bazowego dla danego parametru (patrz base_index)."""
+        return base_index(prm, self.base)
+
     def _build_cols(self):
         cols: list[tuple[str, int, int]] = [("time", -1, -1)]
         for p in range(len(self.params)):
             prm = self.params[p]
-            base = prm.logs[0] if prm.logs else 0
+            base = self._base_for(prm)
             cols.append(("value", p, base))
-            for k in range(1, max(len(self.tags), 2)):
+            for k in range(len(self.tags)):
                 if k == base or k not in prm.logs or base not in prm.logs:
                     continue        # parametru nie ma w którymś z logów — nie ma czego porównywać
                 if self.show_b_values:
@@ -108,7 +126,7 @@ class CompareTableModel(QtCore.QAbstractTableModel):
         group = f" (gr. {prm.group})" if prm.group else ""
         if typ == "value":
             return f"{prm.name}{group} — {self.tags[k]}{unit}"
-        base = prm.logs[0] if prm.logs else 0
+        base = self._base_for(prm)
         return f"Δ {self.tags[k]}−{self.tags[base]}{unit}"
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):  # noqa: N802
@@ -129,7 +147,8 @@ class CompareTableModel(QtCore.QAbstractTableModel):
             prm = self.params[p]
             if typ == "value":
                 return f"Wartość z logu {self.tags[k]}: {prm.name} [{prm.unit}]"
-            return (f"Różnica: log {self.tags[k]} − log {self.tags[0]}\n{prm.name} [{prm.unit}]\n"
+            base = self._base_for(prm)
+            return (f"Różnica: log {self.tags[k]} − log {self.tags[base]}\n{prm.name} [{prm.unit}]\n"
                     "zielone = wyższa wartość, czerwone = niższa")
         return None
 
@@ -159,7 +178,7 @@ class CompareTableModel(QtCore.QAbstractTableModel):
                 return QtGui.QColor(self.theme.panel if r % 2 == 0 else self.theme.row_alt)
             return None
         # delta
-        base = prm.logs[0] if prm.logs else 0
+        base = self._base_for(prm)
         a = prm.series.get(base)
         b = prm.series.get(k)
         if a is None or b is None or r >= len(a) or r >= len(b):
@@ -185,12 +204,13 @@ class CompareTableModel(QtCore.QAbstractTableModel):
         return None
 
     def _delta_scale(self, prm: CompareParam) -> float:
-        a = prm.series.get(0)
+        base = self._base_for(prm)
+        a = prm.series.get(base)
         if a is None:
             return 0.0
         worst = 0.0
         for k, b in prm.series.items():
-            if k == 0 or b is None:
+            if k == base or b is None:
                 continue
             d = np.abs(np.asarray(b) - np.asarray(a))
             d = d[np.isfinite(d)]
@@ -211,6 +231,9 @@ class CompareView(QtWidgets.QWidget):
         self.theme = theme
         self.x_mode = X_TIME
         self.offset_b = 0.0
+        self.base = 0                     # indeks logu bazowego (do którego porównujemy)
+        self._align_hint = ""
+        self._draw_touched = False        # czy użytkownik sam wybrał linię/punkty/średnią
         self.param_checks: dict[tuple, bool] = {}
         self.log_checks: list[bool] = [True] * len(logs)
 
@@ -235,6 +258,7 @@ class CompareView(QtWidgets.QWidget):
 
         self.panel = self._build_panel()
         self.toolbar = self._build_toolbar()
+        self._update_offset_label()
 
         self.tabs = QtWidgets.QTabWidget(self)
         self.tabs.addTab(self._wrap(self.chart), "Wykres porównawczy")
@@ -259,6 +283,8 @@ class CompareView(QtWidgets.QWidget):
         self.chart.cursorMoved.connect(self._on_cursor)
         self.chart.set_secondary_fn(self._secondary_text)
         self.refresh()
+        if len(self.logs) > 1:
+            self.auto_align(initial=True)      # od razu ustaw wykresy względem siebie
 
     def _wrap(self, widget: QtWidgets.QWidget) -> QtWidgets.QWidget:
         box = QtWidgets.QWidget(self)
@@ -275,21 +301,32 @@ class CompareView(QtWidgets.QWidget):
         lay.setSpacing(4)
 
         row = QtWidgets.QHBoxLayout()
-        hint = QtWidgets.QLabel(
-            "Δ = log B − log A  •  <span style='color:#12a150;'>zielone</span> = wyższa wartość "
-            "w logu B, <span style='color:#d64545;'>czerwone</span> = niższa  •  "
-            "wartości interpolowane do wspólnej siatki czasu"
-        )
-        hint.setObjectName("hint")
-        row.addWidget(hint)
+        self.lbl_delta_hint = QtWidgets.QLabel("")
+        self.lbl_delta_hint.setObjectName("hint")
+        row.addWidget(self.lbl_delta_hint)
         row.addStretch(1)
-        self.chk_b_values = QtWidgets.QCheckBox("Pokaż wartości logu B")
+        self.chk_b_values = QtWidgets.QCheckBox("Pokaż wartości drugiego logu")
         self.chk_b_values.setToolTip("Dodaje kolumnę z surowymi wartościami drugiego logu obok delty")
         self.chk_b_values.toggled.connect(self._on_show_b_values)
         row.addWidget(self.chk_b_values)
         lay.addLayout(row)
         lay.addWidget(self.table)
         return box
+
+    def _update_delta_hint(self):
+        """Opis tabeli różnic — zależny od wybranego logu bazowego."""
+        base_tag = self.tags[self.base] if self.base < len(self.tags) else "A"
+        others = [self.tags[i] for i in range(len(self.logs)) if i != self.base]
+        if not others:
+            self.lbl_delta_hint.setText("")
+            return
+        other = " i ".join(others)
+        self.lbl_delta_hint.setText(
+            f"Δ = log {other} − log {base_tag} (log bazowy)  •  "
+            "<span style='color:#12a150;'>zielone</span> = wyższa wartość "
+            f"w logu {other}, <span style='color:#d64545;'>czerwone</span> = niższa  •  "
+            "wartości interpolowane do wspólnej siatki czasu"
+        )
 
     # ---------------------------------------------------------------- elementy
     def _build_toolbar(self) -> QtWidgets.QWidget:
@@ -301,6 +338,11 @@ class CompareView(QtWidgets.QWidget):
         self.cmb_x.addItem("Czas [s]", X_TIME)
         self.cmb_x.addItem("Obroty [obr/min]", X_RPM)
         self.cmb_x.setFixedWidth(150)
+        self.cmb_x.setToolTip(
+            "Czas — przebieg jazdy w sekundach (tu działa dopasowanie w czasie).\n"
+            "Obroty — wartości w funkcji obrotów silnika; pokazuje charakterystykę\n"
+            "parametru (np. ile wynosi przy 3000 obr/min), niezależnie od momentu jazdy."
+        )
         self.cmb_x.currentIndexChanged.connect(self._on_x_mode)
         lay.addWidget(self.cmb_x)
 
@@ -344,16 +386,27 @@ class CompareView(QtWidgets.QWidget):
         self.lbl_hint.setVisible(False)
 
         lay.addWidget(QtWidgets.QLabel("Przesunięcie B [s]:"))
+        self.lbl_offset = lay.itemAt(lay.count() - 1).widget()
         self.spin_offset = QtWidgets.QDoubleSpinBox()
         self.spin_offset.setRange(-600, 600)
         self.spin_offset.setSingleStep(0.1)
         self.spin_offset.setDecimals(2)
         self.spin_offset.setFixedWidth(90)
         self.spin_offset.setToolTip(
-            "Przesuwa w czasie log B (np. gdy logi startowały w różnych momentach jazdy)"
+            "Przesuwa w czasie drugi log (np. gdy logi startowały w różnych momentach jazdy).\n"
+            "Wartość dodatnia odsuwa jego wykres w prawo. „Dopasuj w czasie” wylicza to sama."
         )
         self.spin_offset.valueChanged.connect(self._on_offset)
         lay.addWidget(self.spin_offset)
+
+        self.btn_align = QtWidgets.QPushButton("Dopasuj w czasie")
+        self.btn_align.setToolTip(
+            "Znajduje przesunięcie, przy którym oba logi pokrywają się najbardziej\n"
+            "(porównuje wspólne parametry po kształcie). Działa przy osi czasu."
+        )
+        self.btn_align.setFixedHeight(26)
+        self.btn_align.clicked.connect(lambda: self.auto_align())
+        lay.addWidget(self.btn_align)
 
         for text, tip, slot in (
             ("Dopasuj", "Dopasuj widok do danych", self.chart.fit),
@@ -395,6 +448,22 @@ class CompareView(QtWidgets.QWidget):
         self.log_list.itemChanged.connect(self._on_log_toggled)
         self._fit_log_list()
         lay.addWidget(self.log_list)
+
+        base_row = QtWidgets.QHBoxLayout()
+        base_row.setSpacing(6)
+        lbl_base = QtWidgets.QLabel("Log bazowy:")
+        lbl_base.setToolTip(
+            "Log, do którego porównywane są pozostałe.\n"
+            "Różnice liczone są jako: drugi log − log bazowy."
+        )
+        base_row.addWidget(lbl_base)
+        self.cmb_base = QtWidgets.QComboBox()
+        for i, tag in enumerate(self.tags):
+            self.cmb_base.addItem(f"Log {tag} — {self.logs[i].meta.file_name}", i)
+        self.cmb_base.setToolTip(lbl_base.toolTip())
+        self.cmb_base.currentIndexChanged.connect(self._on_base)
+        base_row.addWidget(self.cmb_base, 1)
+        lay.addLayout(base_row)
 
         head2 = QtWidgets.QLabel("Parametry")
         head2.setStyleSheet("font-weight:600;")
@@ -512,7 +581,8 @@ class CompareView(QtWidgets.QWidget):
             for i, ch in enumerate(channels):
                 if ch is None or not ch.has_data:
                     continue          # parametr nie występuje w tym logu
-                t = np.asarray(ch.t, dtype=float) + (self.offset_b if i == 1 else 0.0)
+                shift = self.offset_b if i != self.base else 0.0
+                t = np.asarray(ch.t, dtype=float) + shift
                 series[i] = interp_series(t, np.asarray(ch.y, dtype=float), grid)
             out.append(
                 CompareParam(
@@ -574,7 +644,7 @@ class CompareView(QtWidgets.QWidget):
                     continue
                 if self.x_mode == X_RPM and ch.is_rpm:
                     continue          # obroty są osią X, nie serią
-                offset = self.offset_b if (i == 1 and self.x_mode == X_TIME) else 0.0
+                offset = self.offset_b if (i != self.base and self.x_mode == X_TIME) else 0.0
                 x, y = log.plot_xy(ch, self.x_mode, split_sweeps=split)
                 lookup_x = log.x_for(ch, self.x_mode)
                 if mode == "mean" and self.x_mode == X_RPM:
@@ -609,10 +679,11 @@ class CompareView(QtWidgets.QWidget):
 
         # --- tabela różnic
         active = [p for p in self.params if self.param_checks.get(p.key, True)]
-        self.model.set_data(self.grid, active, [self.tags[i] for i in range(len(self.logs))])
+        self.model.set_data(self.grid, active, [self.tags[i] for i in range(len(self.logs))], self.base)
         self._fit_diff_columns()
 
         self._fill_stats(active)
+        self._update_delta_hint()
         self._check_scales()
 
     def _swatch(self, color: str) -> QtGui.QIcon:
@@ -627,11 +698,13 @@ class CompareView(QtWidgets.QWidget):
         return QtGui.QIcon(pix)
 
     def _fill_stats(self, params: list[CompareParam]):
+        base_tag = self.tags[self.base] if self.base < len(self.tags) else "A"
+        others = [i for i in range(len(self.logs)) if i != self.base]
         headers = ["Parametr", "Jedn."]
         for i in range(len(self.logs)):
             headers += [f"Min {self.tags[i]}", f"Max {self.tags[i]}", f"Średnia {self.tags[i]}"]
-        headers += [f"Średnia Δ {self.tags[i]}−A" for i in range(1, len(self.logs))]
-        headers += [f"Max |Δ| {self.tags[i]}−A" for i in range(1, len(self.logs))]
+        headers += [f"Średnia Δ {self.tags[i]}−{base_tag}" for i in others]
+        headers += [f"Max |Δ| {self.tags[i]}−{base_tag}" for i in others]
 
         self.stats.clear()
         self.stats.setColumnCount(len(headers))
@@ -652,8 +725,8 @@ class CompareView(QtWidgets.QWidget):
                 for text in cells:
                     self.stats.setItem(r, c, QtWidgets.QTableWidgetItem(text))
                     c += 1
-            a = prm.series.get(0)
-            for i in range(1, len(self.logs)):
+            a = prm.series.get(base_index(prm, self.base))
+            for i in others:
                 b = prm.series.get(i)
                 if a is None or b is None:
                     c += 2
@@ -712,33 +785,33 @@ class CompareView(QtWidgets.QWidget):
         self._check_scales()
 
     def _check_scales(self):
-        """Podpowiedzi: przebiegi przy osi obrotów, normalizacja przy różnych zakresach."""
+        """Podpowiedzi: dopasowanie w czasie, przebiegi przy osi obrotów, normalizacja."""
         if self.x_mode == X_RPM:
             segs = sum(len(log.rpm_segments()) for log in self.logs)
+            align = f"{self._align_hint} " if self._align_hint else ""
             self._set_hint(
+                align +
                 "Oś X = obroty: linie podzielone na przebiegi i posortowane po obrotach (bez pętli). "
                 "Obroty nie są rysowane jako seria — są osią X."
-                if segs > len(self.logs) else "Oś X = obroty (obroty są osią, nie serią)."
+                if segs > len(self.logs) else align + "Oś X = obroty (obroty są osią, nie serią)."
             )
             return
         spans = []
         for prm in self.params:
-            v = prm.series.get(0)
+            v = prm.series.get(base_index(prm, self.base))
             if v is None:
                 continue
             finite = v[np.isfinite(v)]
             if len(finite):
                 spans.append(float(finite.max() - finite.min()))
         if not spans or self.chk_norm.isChecked():
-            self._set_hint("")
+            self._set_hint(self._align_hint)
             return
         spans.sort()
         ratio = spans[-1] / max(spans[0], 1e-9)
-        self._set_hint(
-            "Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj 0–100%”, "
-            "aby porównać kształty wszystkich serii"
-            if ratio > 25 else ""
-        )
+        tip = ("Wskazówka: zakresy parametrów różnią się bardzo — włącz „Normalizuj”, "
+               "aby porównać kształty wszystkich serii") if ratio > 25 else ""
+        self._set_hint(" ".join(t for t in (self._align_hint, tip) if t))
 
     def _set_hint(self, text: str):
         self.lbl_hint.setText(text)
@@ -748,6 +821,19 @@ class CompareView(QtWidgets.QWidget):
         self.x_mode = self.cmb_x.currentData()
         self.chk_sweeps.setEnabled(self.x_mode == X_RPM)
         self._enable_mean_item(self.x_mode == X_RPM)
+        # przesunięcie w czasie ma sens tylko przy osi czasu — przy obrotach oba wykresy
+        # są już zestawione po obrotach silnika
+        time_mode = self.x_mode == X_TIME
+        for w in (self.spin_offset, self.lbl_offset):
+            w.setEnabled(time_mode)
+        self.btn_align.setEnabled(time_mode and len(self.logs) > 1)
+        self.btn_align.setToolTip(
+            "Znajduje przesunięcie, przy którym oba logi pokrywają się najbardziej\n"
+            "(porównuje wspólne parametry po kształcie). Działa przy osi czasu."
+            if time_mode else
+            "Dopasowanie w czasie działa przy osi czasu — przy osi obrotów wykresy\n"
+            "są zestawione po obrotach silnika, więc przesunięcie nie jest potrzebne."
+        )
         if not self._draw_touched:
             # przy obrotach domyślnie punkty — linia tworzyłaby zygzaki
             self.cmb_draw.setCurrentIndex(1 if self.x_mode == X_RPM else 0)
@@ -769,16 +855,72 @@ class CompareView(QtWidgets.QWidget):
         self.cursorMoved.emit(x, float("nan"), self)
 
     def _secondary_text(self, x: float) -> str:
-        """Obroty przy osi czasu (na podstawie logu A) albo czas przy osi obrotów."""
-        base = self.logs[0]
+        """Obroty przy osi czasu (na podstawie logu bazowego) albo czas przy osi obrotów."""
+        base = self.logs[self.base] if self.base < len(self.logs) else self.logs[0]
+        tag = self.tags[self.base] if self.base < len(self.tags) else self.tags[0]
         if self.x_mode == X_TIME:
             rpm = base.rpm_nearest(x)
-            return f"Log {self.tags[0]}: {fmt_num(rpm)} obr/min" if rpm is not None else ""
+            return f"Log {tag}: {fmt_num(rpm)} obr/min" if rpm is not None else ""
         series = base.rpm_series()
         if series is None:
             return ""
         t = base.time_for_rpm(x)
-        return f"Log {self.tags[0]}: {fmt_num(t, 2)} s" if t is not None else ""
+        return f"Log {tag}: {fmt_num(t, 2)} s" if t is not None else ""
+
+    # ------------------------------------------------------------- dopasowanie
+    def _update_offset_label(self):
+        """Etykieta mówi, który log jest przesuwany (ten, który nie jest bazą)."""
+        others = [self.tags[i] for i in range(len(self.logs)) if i != self.base]
+        who = ", ".join(others) if others else "B"
+        self.lbl_offset.setText(f"Przesunięcie {who} [s]:")
+
+    def _on_base(self, index: int):
+        """Zmiana logu bazowego — różnice liczone są względem niego."""
+        data = self.cmb_base.itemData(index)
+        self.base = int(data if data is not None else index)
+        if self.cmb_base.currentIndex() != index:      # wywołanie z kodu, nie z listy
+            self.cmb_base.blockSignals(True)
+            self.cmb_base.setCurrentIndex(index)
+            self.cmb_base.blockSignals(False)
+        self._align_hint = ""
+        self._update_offset_label()
+        if len(self.logs) > 1:
+            self.auto_align()          # przesunięcie liczone jest względem nowej bazy
+        else:
+            self.refresh()
+
+    def auto_align(self, initial: bool = False):
+        """Ustawia przesunięcie w czasie tak, aby logi pokryły się jak najlepiej."""
+        if len(self.logs) < 2:
+            return
+        base = self.logs[self.base] if self.base < len(self.logs) else self.logs[0]
+        others = [i for i in range(len(self.logs)) if i != self.base]
+        other_idx = others[0] if others else None
+        if other_idx is None:
+            return
+        res = best_time_offset(base, self.logs[other_idx])
+        if res is None:
+            self._align_hint = ("Nie udało się dopasować automatycznie — brak wspólnych parametrów "
+                                "z danymi. Ustaw przesunięcie ręcznie.")
+            self.refresh()
+            return
+        off, score, contrast, used = res
+        self.offset_b = float(off)
+        self.spin_offset.blockSignals(True)
+        self.spin_offset.setValue(float(off))
+        self.spin_offset.blockSignals(False)
+        tag = self.tags[other_idx] if other_idx < len(self.tags) else "B"
+        if contrast < 0.05 or score < 0.2:
+            self._align_hint = (
+                f"Dopasowanie w czasie niepewne (zgodność {score:.2f}, kontrast {contrast:.2f}) — "
+                f"logi mogą być z różnych przejazdów. Ustaw „Przesunięcie {tag}” ręcznie."
+            )
+        else:
+            self._align_hint = (
+                f"Dopasowano w czasie: log {tag} przesunięty o {off:+.2f} s "
+                f"(zgodność {score:.2f}, {used} wspólnych parametrów)."
+            )
+        self.refresh()
 
     def _export_png(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
