@@ -425,8 +425,15 @@ class LogChart(QtWidgets.QWidget):
         return (value - s.ymin) / span * 100.0
 
     # ---------------------------------------------------- etykieta przy osi X
+    def _fmt_x(self, x: float, time_decimals: int = 2) -> str:
+        """Wartość osi X: obroty to liczba całkowita („3 200 obr/min”), czas z miejscami."""
+        return fmt_num(x, 0 if self._x_is_rpm() else time_decimals)
+
+    def _x_is_rpm(self) -> bool:
+        return "obr" in self._x_unit
+
     def _badge_text(self, x: float) -> str:
-        primary = f"{fmt_num(x, 2)} {self._x_unit}".strip()
+        primary = f"{self._fmt_x(x)} {self._x_unit}".strip()
         if self._secondary_fn is not None:
             try:
                 extra = self._secondary_fn(x)
@@ -455,7 +462,7 @@ class LogChart(QtWidgets.QWidget):
     def _build_tooltip(self, x: float, rows: list[tuple[SeriesSpec, float]]):
         pin = " 📌" if self._pinned else ""
         head = (f"<div style='color:#9aa0a6; margin-bottom:5px;'>"
-                f"{self._x_label()} = <b>{fmt_num(x, 3)}</b> {self._x_unit}{pin}</div>")
+                f"{self._x_label()} = <b>{self._fmt_x(x, 3)}</b> {self._x_unit}{pin}</div>")
         trs = []
         for spec, val in rows:
             unit = f" {spec.unit}" if spec.unit else ""

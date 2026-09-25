@@ -319,7 +319,7 @@ class BandsChart(QtWidgets.QWidget):
         self._update_badge(x)
 
     def _badge_text(self, x: float) -> str:
-        primary = f"{fmt_num(x, 2)} {self._x_unit}".strip()
+        primary = f"{fmt_num(x, 0 if 'obr' in self._x_unit else 2)} {self._x_unit}".strip()
         if self._secondary_fn is not None:
             try:
                 extra = self._secondary_fn(x)

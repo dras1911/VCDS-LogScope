@@ -3,6 +3,25 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.7 — 25 września 2026
+
+**Naprawione**
+
+- **Obroty bez miejsc po przecinku.** Przy osi obrotów etykieta kursora pokazywała
+  „4 640,00 obr/min”, a dymek „Obroty = 4 640,000 obr/min”. Obroty silnika to wartość
+  całkowita, więc teraz jest „4 640 obr/min” — i w wykresie nakładanym, i w pasmach,
+  i w dymku. Przy osi czasu bez zmian: tam setne sekundy zostają („30,00 s”).
+
+**Sprawdzone przy okazji zgłoszeń (program działa poprawnie, bez zmian w kodzie)**
+
+- Pionowe kreski na wykresie przy osi obrotów to prawdziwe skoki w danych
+  (np. odcięcie wtrysku — obciążenie spada w jednej próbce ze 130% do 10%).
+  Program rozcina tylko sztuczne połączenia między przebiegami i robi to poprawnie —
+  sprawdzone osobno dla każdego parametru w obu logach przykładowych.
+- Komunikat „logi mogą być z różnych przejazdów” przy niskiej zgodności dopasowania
+  to nie błąd: przy dwóch różnych przejazdach program mówi o tym wprost, zamiast
+  dopasowywać na siłę.
+
 ## 1.0.6 — 25 września 2026
 
 **Naprawione (na podstawie zgłoszeń)**
