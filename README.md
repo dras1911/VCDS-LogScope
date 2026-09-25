@@ -32,6 +32,9 @@ i możliwość porównania kilku logów między sobą.
   i porównywać; obroty przestają być wtedy rysowane jako seria, bo są osią
 - „Normalizuj” przydaje się w widoku nakładanym, gdy parametry mają bardzo różne wartości
   (obroty 0–6000, a temperatura 80–90) — wtedy widać kształt każdej linii
+- **„Zaznacz fragment”**: zaznacz myszą kawałek przejazdu (np. jedno przyspieszanie) i pod
+  wykresem dostajesz minimum, średnią i maksimum każdego parametru tylko z tego fragmentu —
+  krawędzie zaznaczenia można przesuwać myszą, a złapanie środka przesuwa całe zaznaczenie
 
 **2. Tabela z kolorowaniem**
 - im wyższa wartość, tym mocniejszy kolor komórki — wzrosty obrotów widać na pierwszy rzut oka

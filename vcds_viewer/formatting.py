@@ -49,3 +49,12 @@ def plural_przebieg(n: int) -> str:
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
         return "przebiegi"
     return "przebiegów"
+
+
+def plural_probek(n: int) -> str:
+    """Odmiana rzeczownika „próbka”: 1 próbka, 2–4 próbki, 5+ próbek."""
+    if n == 1:
+        return "próbka"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "próbki"
+    return "próbek"

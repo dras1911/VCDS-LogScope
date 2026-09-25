@@ -3,6 +3,18 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.9 — 25 września 2026
+
+**Nowe**
+
+- **Statystyki dla zaznaczonego fragmentu wykresu.** Nowe pole „Zaznacz fragment”: zaznaczasz
+  myszą kawałek przejazdu (np. jedno przyspieszanie) i pod wykresem pojawiają się minimum,
+  średnia i maksimum każdego widocznego parametru — liczone wyłącznie z zaznaczonych próbek.
+  Krawędzie zaznaczenia można przesuwać myszą, a złapanie środka przesuwa całe zaznaczenie po
+  logu. Zaznaczenie działa też przy osi obrotów (wtedy zakres znaczy „obroty od–do”).
+  Przycisk „Wyczyść” usuwa zaznaczenie, a zmiana osi X czyści je samo — stare jednostki
+  przestałyby pasować.
+
 ## 1.0.8 — 25 września 2026
 
 **Ulepszenia**

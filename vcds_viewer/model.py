@@ -441,6 +441,23 @@ class LogData:
         self._steep_jumps = total
         return total
 
+    def stats_in_range(self, ch: Channel, mode: str, x0: float, x1: float
+                       ) -> tuple[int, float, float, float]:
+        """(liczba próbek, min, max, średnia) dla zaznaczonego zakresu osi X.
+
+        Zakres liczymy w jednostkach osi, czyli dokładnie w tym, co widać w zaznaczonym
+        pasmie: przy osi czasu to sekundy, przy osi obrotów — obroty.
+        """
+        if not ch.has_data:
+            return (0, float("nan"), float("nan"), float("nan"))
+        x = np.asarray(self.x_for(ch, mode), dtype=float)
+        y = np.asarray(ch.y, dtype=float)
+        ok = np.isfinite(x) & np.isfinite(y) & (x >= x0) & (x <= x1)
+        if not ok.any():
+            return (0, float("nan"), float("nan"), float("nan"))
+        vals = y[ok]
+        return (int(ok.sum()), float(np.min(vals)), float(np.max(vals)), float(np.mean(vals)))
+
     @staticmethod
     def _insert_gaps(x: np.ndarray, y: np.ndarray, t: np.ndarray,
                      limit: float) -> tuple[np.ndarray, np.ndarray]:

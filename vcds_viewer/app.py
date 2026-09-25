@@ -71,6 +71,7 @@ def _selftest(argv: list[str]) -> int:
     # Regresja z 1.0.6: okno porównania przy osi obrotów wysyłało obroty jako czas
     # („kursor: 4640,00 s” zamiast np. „55,48 s”), a „obroty:” zostawało puste.
     import numpy as np                     # lokalnie: start programu go nie potrzebuje
+    from .model import X_RPM, X_TIME
 
     series = log.rpm_series()
     rpms = np.asarray(series[0], dtype=float) if series else np.array([])
@@ -101,10 +102,43 @@ def _selftest(argv: list[str]) -> int:
     params = len(cmp_view.params)
     rows = len(cmp_view.grid)
     channels = len(view.log.numeric_channels)
+
+    # --- zaznaczony fragment: statystyki liczą się wyłącznie z zaznaczonych próbek
+    sel_ok = False
+    try:
+        ch0 = view.log.numeric_channels[0]
+        dur = view.log.duration
+        view.cmb_x.setCurrentIndex(0)                 # oś czasu
+        QtWidgets.QApplication.processEvents()
+        view.chk_select.setChecked(True)
+        view.chart.set_selection(dur * 0.2, dur * 0.5)
+        QtWidgets.QApplication.processEvents()
+        cards = [view.sel_stats.cards_layout.itemAt(i).widget()
+                 for i in range(view.sel_stats.cards_layout.count())]
+        cards = [c for c in cards if c is not None]
+        n_time, _lo, _hi, _mean = view.log.stats_in_range(ch0, X_TIME, dur * 0.2, dur * 0.5)
+        # to samo przy osi obrotów — zakres znaczy wtedy „obroty od–do”
+        view.cmb_x.setCurrentIndex(1)
+        QtWidgets.QApplication.processEvents()
+        view.chart.set_selection(2000.0, 3000.0)
+        QtWidgets.QApplication.processEvents()
+        n_rpm, _lo2, _hi2, _mean2 = view.log.stats_in_range(ch0, X_RPM, 2000.0, 3000.0)
+        sel_ok = bool(cards) and not view.sel_stats.isHidden() and n_time > 0 and n_rpm > 0
+        lines.append(f"SELFTEST: zaznaczony fragment: {len(cards)} parametrów, "
+                     f"próbek={n_time} (czas) / {n_rpm} (obroty) "
+                     f"({cards[0].text() if cards else '—'})")
+    except Exception as exc:                 # raport zamiast wyjątku znikąd
+        lines.append(f"SELFTEST: zaznaczony fragment: BŁĄD {exc}")
+    view.chk_select.setChecked(False)
+    view.cmb_x.setCurrentIndex(0)
+    QtWidgets.QApplication.processEvents()
+
     lines.append(f"SELFTEST: wersja {__version__}")
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
                  f"parametry_wspolne={params} siatka={rows} pasma={bands}")
-    good = ok and channels and params and bands and cursor_ok
+    good = ok and channels and params and bands and cursor_ok and sel_ok
+    lines.append(f"SELFTEST: kontrole: obrazy={ok} kanaly={bool(channels)} parametry={bool(params)} "
+                 f"pasma={bool(bands)} kursor={cursor_ok} zaznaczenie={sel_ok}")
     lines.append("SELFTEST: OK" if good else "SELFTEST: BLAD")
 
     report = out_dir / "selftest_report.txt"

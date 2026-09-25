@@ -53,7 +53,21 @@ class _Series:
 
 
 class LogViewBox(pg.ViewBox):
-    """ViewBox z zoomem tylko po X (kółko myszy) i Ctrl+rolka = zoom po Y."""
+    """ViewBox z zoomem tylko po X (kółko myszy) i Ctrl+rolka = zoom po Y.
+
+    W trybie „Zaznacz fragment” obsługuje też zaznaczanie zakresu myszą: przeciągnięcie
+    w pustym miejscu wyznacza nowy fragment, złapanie krawędzi ją przesuwa, a złapanie
+    środka przesuwa całe zaznaczenie po logu.
+    """
+
+    #: wywoływane przy każdej zmianie: (x0, x1) w jednostkach osi albo (None, None)
+    selection_changed = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.select_mode = False
+        self._sel: Optional[tuple[float, float]] = None
+        self._grab: Optional[tuple[str, float]] = None
 
     def wheelEvent(self, ev, axis=None):  # noqa: N802 (API pyqtgraph)
         if ev.modifiers() & Qt.ControlModifier:
@@ -67,6 +81,60 @@ class LogViewBox(pg.ViewBox):
         self.scaleBy((scale, 1.0), center=QtCore.QPointF(center.x(), center.y()))
         ev.accept()
 
+    # -------------------------------------------------------- zaznaczanie zakresu
+    def selection(self) -> Optional[tuple[float, float]]:
+        return self._sel
+
+    def set_selection(self, x0: Optional[float], x1: Optional[float]) -> None:
+        """Ustawia zaznaczenie (albo czyści, gdy któreś z granic jest None)."""
+        if x0 is None or x1 is None or not np.isfinite(x0) or not np.isfinite(x1):
+            self._sel = None
+        else:
+            self._sel = (float(min(x0, x1)), float(max(x0, x1)))
+        if self.selection_changed is not None:
+            self.selection_changed(*(self._sel if self._sel else (None, None)))
+
+    def _edge_tol(self) -> float:
+        """Ile jednostek osi odpowiada ~7 pikselom — tyle wystarczy, żeby złapać krawędź."""
+        try:
+            per_px = float(self.viewPixelSize()[0])
+        except Exception:                     # pragma: no cover - zabezpieczenie
+            per_px = 1.0
+        return 7.0 * abs(per_px)
+
+    def mouseDragEvent(self, ev, axis=None):  # noqa: N802 (API pyqtgraph)
+        if not self.select_mode or ev.button() != Qt.LeftButton:
+            super().mouseDragEvent(ev, axis=axis)
+            return
+        ev.accept()
+        x = float(self.mapSceneToView(ev.scenePos()).x())
+        if ev.isStart():
+            start = float(self.mapSceneToView(ev.buttonDownScenePos()).x())
+            self._grab = ("new", start)
+            if self._sel is not None:
+                a, b = self._sel
+                tol = self._edge_tol()
+                if abs(start - a) <= tol:
+                    self._grab = ("left", 0.0)
+                elif abs(start - b) <= tol:
+                    self._grab = ("right", 0.0)
+                elif a + tol < start < b - tol:
+                    self._grab = ("body", start - a)
+        kind, off = self._grab if self._grab else ("new", x)
+        if kind == "new":
+            self.set_selection(off, x)
+        elif self._sel is not None:
+            a, b = self._sel
+            if kind == "left":
+                self.set_selection(x, b)
+            elif kind == "right":
+                self.set_selection(a, x)
+            else:
+                width = b - a
+                self.set_selection(x - off, x - off + width)
+        if ev.isFinish():
+            self._grab = None
+
 
 class LogChart(QtWidgets.QWidget):
     """Nakładany wykres wielu serii z kursorem pomiarowym i dymkiem wartości."""
@@ -74,6 +142,7 @@ class LogChart(QtWidgets.QWidget):
     cursorMoved = Signal(float)      # pozycja kursora na osi X
     pinChanged = Signal(bool)        # czy kursor jest przypięty
     doubleClicked = Signal()
+    selectionChanged = Signal(float, float)   # zaznaczony zakres osi (nan, nan = brak)
 
     def __init__(self, theme: Theme, parent=None):
         super().__init__(parent)
@@ -126,6 +195,19 @@ class LogChart(QtWidgets.QWidget):
         self.plot.addItem(self.marker_label, ignoreBounds=True)
         self.marker_label.hide()
 
+        # zaznaczony fragment przejazdu (tryb „Zaznacz fragment”)
+        self.region = pg.LinearRegionItem(
+            values=(0.0, 1.0),
+            movable=False,               # przesuwaniem zajmuje się ViewBox (patrz LogViewBox)
+            brush=pg.mkBrush(*hex_to_rgba(theme.accent, 46)),
+            pen=pg.mkPen(theme.accent, width=1.2),
+            hoverPen=pg.mkPen(theme.accent, width=1.8),
+        )
+        self.region.setZValue(20)
+        self.plot.addItem(self.region, ignoreBounds=True)
+        self.region.hide()
+        self.vb.selection_changed = self._on_selection
+
         # etykieta przy linii kursora: dokładny czas / obroty w miejscu kursora
         self.axis_badge = QtWidgets.QLabel(self.pw)
         self.axis_badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -166,8 +248,38 @@ class LogChart(QtWidgets.QWidget):
         self._secondary_fn = fn
 
     def set_x_axis(self, mode: str, unit: str, label: str):
+        if mode != self._x_mode:
+            # zmiana jednostek osi — stare zaznaczenie nie ma już sensu
+            self.vb.set_selection(None, None)
         self._x_mode, self._x_unit = mode, unit
         self.plot.getAxis("bottom").setLabel(label, units=unit)
+
+    # ------------------------------------------------------- zaznaczony fragment
+    def set_select_mode(self, on: bool) -> None:
+        """Włącza zaznaczanie fragmentu; przy włączeniu pokazuje zakres na środku widoku."""
+        self.vb.select_mode = bool(on)
+        if not on:
+            self.vb.set_selection(None, None)
+            return
+        if self.vb.selection() is None:
+            x0, x1 = self.vb.viewRange()[0]
+            self.vb.set_selection(x0 + (x1 - x0) * 0.25, x0 + (x1 - x0) * 0.75)
+
+    def selection(self) -> Optional[tuple[float, float]]:
+        return self.vb.selection()
+
+    def set_selection(self, x0: Optional[float], x1: Optional[float]) -> None:
+        self.vb.set_selection(x0, x1)
+
+    def _on_selection(self, x0, x1) -> None:
+        """Zaznaczenie → pasmo na wykresie + sygnał dla widoku."""
+        if x0 is None or x1 is None or not np.isfinite(x0) or not np.isfinite(x1):
+            self.region.hide()
+            self.selectionChanged.emit(float("nan"), float("nan"))
+            return
+        self.region.setRegion((float(x0), float(x1)))
+        self.region.setVisible(self.vb.select_mode)
+        self.selectionChanged.emit(float(x0), float(x1))
 
     def clear(self):
         for s in self._series.values():

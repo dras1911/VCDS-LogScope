@@ -11,7 +11,7 @@ from .bandview import BandsChart
 from .chartview import LogChart, SeriesSpec
 from .colors import color_map
 from .flowlayout import FlowLayout
-from .formatting import fmt_num, fmt_time, plural_przebieg
+from .formatting import fmt_num, fmt_time, plural_probek, plural_przebieg
 from .model import X_RPM, X_TIME, Channel, LogData
 from .tableview import LogTable
 from .theme import Theme
@@ -136,6 +136,55 @@ class SeriesPanel(QtWidgets.QWidget):
             self.toggled.emit(sid, state)
 
 
+class SelectionStats(QtWidgets.QWidget):
+    """Statystyki tylko dla zaznaczonego fragmentu wykresu: min, średnia i max parametrów."""
+
+    def __init__(self, theme: Theme, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+
+        self.lbl_title = QtWidgets.QLabel("")
+        self.lbl_title.setStyleSheet("font-weight:600;")
+        self.btn_clear = QtWidgets.QPushButton("Wyczyść")
+        self.btn_clear.setFixedHeight(22)
+        self.btn_clear.setToolTip("Usuwa zaznaczenie fragmentu")
+
+        head = QtWidgets.QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(6)
+        head.addWidget(self.lbl_title)
+        head.addStretch(1)
+        head.addWidget(self.btn_clear)
+
+        self.cards = QtWidgets.QWidget(self)
+        self.cards_layout = FlowLayout(self.cards, margin=0, spacing=6)
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 2, 0, 2)
+        root.setSpacing(3)
+        root.addLayout(head)
+        root.addWidget(self.cards)
+        self.setVisible(False)
+
+    def set_content(self, title: str, cards: list[tuple[str, str]]) -> None:
+        """`cards` to pary (tekst, podpowiedź) — po jednej na parametr."""
+        self.lbl_title.setText(title)
+        while self.cards_layout.count():
+            item = self.cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        for text, tip in cards:
+            lbl = QtWidgets.QLabel(text)
+            lbl.setToolTip(tip)
+            lbl.setStyleSheet(
+                f"background:{self.theme.panel}; border:1px solid {self.theme.border};"
+                "border-radius:5px; padding:2px 7px;"
+            )
+            self.cards_layout.addWidget(lbl)
+        self.setVisible(bool(cards))
+
+
 class LogView(QtWidgets.QWidget):
     """Kompletny widok jednego logu: wykres + tabela + panel parametrów."""
 
@@ -157,6 +206,7 @@ class LogView(QtWidgets.QWidget):
         self.view_stack.addWidget(self.bands)
         self.table = LogTable(log, theme, self)
         self.panel = SeriesPanel(theme, self)
+        self.sel_stats = SelectionStats(theme, self)
         self.colors = color_map(log.channels, theme.is_dark)
         self.panel.populate(log, self.colors)
 
@@ -169,6 +219,7 @@ class LogView(QtWidgets.QWidget):
         cbl.addWidget(self.chart_toolbar)
         cbl.addWidget(self.lbl_hint)
         cbl.addWidget(self.view_stack, 1)
+        cbl.addWidget(self.sel_stats)
 
         self.splitter = QtWidgets.QSplitter(Qt.Vertical, self)
         self.splitter.addWidget(chart_box)
@@ -196,6 +247,10 @@ class LogView(QtWidgets.QWidget):
         self.panel.toggled.connect(self._on_series_toggled)
         self.chart.doubleClicked.connect(self.chart.fit)
         self.chart.set_secondary_fn(self._secondary_text)
+        self.chart.selectionChanged.connect(self._on_selection)
+        self.sel_stats.btn_clear.clicked.connect(
+            lambda: self.chart.set_selection(None, None)
+        )
 
         self.rebuild_series()
 
@@ -278,6 +333,16 @@ class LogView(QtWidgets.QWidget):
         )
         self.chk_follow.toggled.connect(lambda v: setattr(self, "_follow_table", v))
         lay.addWidget(self.chk_follow)
+
+        self.chk_select = QtWidgets.QCheckBox("Zaznacz fragment")
+        self.chk_select.setToolTip(
+            "Zaznacz myszą kawałek przejazdu — pod wykresem pokażą się min, średnia i max\n"
+            "tylko dla tego fragmentu. Krawędzie zaznaczenia można przesuwać, a złapanie\n"
+            "środka przesuwa całe zaznaczenie po logu. W tym trybie wykres nie przesuwa się\n"
+            "myszą — odznacz pole, żeby wrócić do zwykłego przesuwania i zoomu."
+        )
+        self.chk_select.toggled.connect(self._on_select_mode)
+        lay.addWidget(self.chk_select)
 
         for text, tip, slot in (
             ("Dopasuj", "Dopasuj widok do całego logu (dwuklik na wykresie)", self._fit_active),
@@ -391,6 +456,40 @@ class LogView(QtWidgets.QWidget):
         self.chart.set_normalized(on)
         self._check_scales()
 
+    # ------------------------------------------------------- zaznaczony fragment
+    def _on_select_mode(self, on: bool):
+        self.chart.set_select_mode(on)
+
+    def _on_selection(self, x0: float, x1: float):
+        """Zaznaczenie na wykresie → statystyki tylko dla tego fragmentu."""
+        if not (x0 == x0 and x1 == x1):          # NaN = brak zaznaczenia
+            self.sel_stats.set_content("", [])
+            return
+        visible = {s.spec.sid for s in self.chart.visible_series()}
+        cards: list[tuple[str, str]] = []
+        samples = 0
+        for ch in self.log.channels:
+            if not ch.has_data or sid_for(ch) not in visible:
+                continue
+            n, lo, hi, mean = self.log.stats_in_range(ch, self.x_mode, x0, x1)
+            if n == 0:
+                continue
+            samples = max(samples, n)
+            cards.append((
+                f"{ch.short_label}: {fmt_num(lo)}–{fmt_num(hi)} (śr. {fmt_num(mean)})",
+                f"{ch.label}\npróbek w zaznaczeniu: {n}",
+            ))
+        if not cards:
+            self.sel_stats.set_content("", [])   # nic nie pasuje — schowaj i wyczyść stare karty
+            return
+        if self.x_mode == X_RPM:
+            title = f"Zaznaczony fragment: {fmt_num(x0)}–{fmt_num(x1)} obr/min"
+        else:
+            title = (f"Zaznaczony fragment: {fmt_time(x0)}–{fmt_time(x1)} s "
+                     f"(długość {fmt_time(x1 - x0)} s)")
+        title += f" · {samples} {plural_probek(samples)}"
+        self.sel_stats.set_content(title, cards)
+
     def _check_scales(self):
         """Podpowiedzi kontekstowe: normalizacja przy różnych zakresach, przebiegi przy osi obrotów."""
         if self.x_mode == X_RPM:
@@ -454,6 +553,9 @@ class LogView(QtWidgets.QWidget):
     def _on_series_toggled(self, sid: str, checked: bool):
         self.chart.set_series_visible(sid, checked)
         self.bands.set_series_visible(sid, checked)
+        sel = self.chart.selection()
+        if sel is not None:                  # odśwież statystyki — inny zestaw parametrów
+            self._on_selection(*sel)
 
     def _on_x_mode(self):
         self.x_mode = self.cmb_x.currentData()
