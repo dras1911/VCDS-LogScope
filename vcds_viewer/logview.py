@@ -413,6 +413,9 @@ class LogView(QtWidgets.QWidget):
                         f"{plural_przebieg(len(segments))} i posortowane "
                         "po obrotach (bez pętli). Obroty są osią, nie serią. Wiersz tabeli odpowiada "
                         "jednej wartości obrotów, więc kursor może przeskakiwać między przebiegami.")
+                if self.log.steep_jumps() >= 3:
+                    text += (" Pionowe kreski to prawdziwe skoki danych (np. odcięcie wtrysku) — "
+                             "nie są sklejone z różnych przebiegów.")
             else:
                 text = "Oś X = obroty (obroty są osią, nie serią)."
             self._set_hint(text)

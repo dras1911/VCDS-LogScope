@@ -169,6 +169,8 @@ class LogData:
     meta: LogMeta
     groups: list[Group] = field(default_factory=list)
     blocks: int = 1
+    # wyliczane przy pierwszym użyciu (patrz `steep_jumps`)
+    _steep_jumps: Optional[int] = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------------ kanały
     @property
@@ -408,6 +410,36 @@ class LogData:
         dt = dt[dt > 0]
         step = float(np.median(dt)) if len(dt) else 0.9
         return max(3.0 * step, 1.5)
+
+    def steep_jumps(self, share: float = 0.35) -> int:
+        """Ile razy wartość skoczyła o więcej niż `share` swojego zakresu w jednym kroku czasu.
+
+        Takie skoki rysują się przy osi obrotów jako pionowe kreski — to prawdziwe dane
+        (np. odcięcie wtrysku: obciążenie 120% → 14%), a nie sklejone przebiegi. Program
+        rozcina wyłącznie pary próbek z odległych momentów (`_insert_gaps`), więc jeśli
+        skok mieści się w jednym kroku czasu, jest pokazywany wiernie.
+        """
+        if self._steep_jumps is not None:
+            return self._steep_jumps
+        total = 0
+        for ch in self.channels:
+            if not ch.has_data or ch.is_rpm:
+                continue
+            raw_t = np.asarray(ch.t, dtype=float)
+            y = np.asarray(ch.y, dtype=float)
+            ok = np.isfinite(raw_t) & np.isfinite(y)
+            t, y = raw_t[ok], y[ok]
+            if len(y) < 3:
+                continue
+            span = float(np.nanmax(y) - np.nanmin(y))
+            if span <= 0:
+                continue
+            limit = self._gap_limit(raw_t)
+            jump = np.abs(np.diff(y)) > share * span
+            within_step = np.abs(np.diff(t)) <= limit
+            total += int(np.sum(jump & within_step))
+        self._steep_jumps = total
+        return total
 
     @staticmethod
     def _insert_gaps(x: np.ndarray, y: np.ndarray, t: np.ndarray,

@@ -3,6 +3,20 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.8 — 25 września 2026
+
+**Ulepszenia**
+
+- **Podpowiedź tłumaczy pionowe kreski.** Przy osi obrotów, gdy w logu są prawdziwe
+  skoki (np. odcięcie wtrysku: obciążenie spada ze 120% do 14% w jednej próbce),
+  program mówi wprost, że to dane z logu, a nie sklejone przebiegi — żeby nie trzeba
+  było się domyślać ani zgłaszać tego jako błędu.
+- **Autotest każdej paczki sprawdza kursor przy obu osiach** — w widoku pojedynczego
+  logu i w oknie porównania. Usterka z 1.0.6 („kursor: 4640,00 s” zamiast prawdziwego
+  czasu zdarzenia) zostałaby teraz wychwycona automatycznie przy budowaniu wersji:
+  autotest pilnuje, że przy osi obrotów do paska statusu trafia czas zdarzenia
+  i wartość obrotów, a nie sama pozycja na osi.
+
 ## 1.0.7 — 25 września 2026
 
 **Naprawione**

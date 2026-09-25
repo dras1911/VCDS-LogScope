@@ -67,19 +67,51 @@ def _selftest(argv: list[str]) -> int:
         ok = widget.grab().save(str(path)) and ok
         lines.append(f"SELFTEST: zapisano {path}")
 
+    # --- kursor przy OBU osiach: pasek statusu musi dostać prawdziwy czas i obroty.
+    # Regresja z 1.0.6: okno porównania przy osi obrotów wysyłało obroty jako czas
+    # („kursor: 4640,00 s” zamiast np. „55,48 s”), a „obroty:” zostawało puste.
+    import numpy as np                     # lokalnie: start programu go nie potrzebuje
+
+    series = log.rpm_series()
+    rpms = np.asarray(series[0], dtype=float) if series else np.array([])
+    rpms = rpms[np.isfinite(rpms)]
+    probe_rpm = float(np.median(rpms)) if len(rpms) else 3000.0
+
+    cursor_ok = True
+    seen: list[tuple[float, float]] = []
+    for w in (view, cmp_view):
+        w.cursorMoved.connect(lambda t, rpm, _src: seen.append((t, rpm)))
+    cmp_view.cursorMoved.connect(win._on_cursor)          # tak jak w programie
+
+    for w, name in ((view, "pojedynczy log"), (cmp_view, "porównanie")):
+        for idx, axis, x in ((0, "czas", 20.4), (1, "obroty", probe_rpm)):
+            w.cmb_x.setCurrentIndex(idx)
+            QtWidgets.QApplication.processEvents()
+            seen.clear()
+            w.chart.set_cursor_x(x, emit=True)
+            QtWidgets.QApplication.processEvents()
+            t_val, rpm_val = seen[-1] if seen else (float("nan"), float("nan"))
+            lines.append(f"SELFTEST: kursor {name} / oś {axis}: "
+                         f"{win.lbl_cursor.text()}, obroty: {win.lbl_rpm.text()}")
+            if idx == 1 and not (t_val == t_val and 0.0 <= t_val < 600.0):
+                cursor_ok = False       # czas nie może być wartością obrotów
+            if not (rpm_val == rpm_val and rpm_val > 0):
+                cursor_ok = False       # obroty nie mogą zostać puste
+
     params = len(cmp_view.params)
     rows = len(cmp_view.grid)
     channels = len(view.log.numeric_channels)
     lines.append(f"SELFTEST: wersja {__version__}")
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
                  f"parametry_wspolne={params} siatka={rows} pasma={bands}")
-    lines.append("SELFTEST: OK" if ok and channels and params and bands else "SELFTEST: BLAD")
+    good = ok and channels and params and bands and cursor_ok
+    lines.append("SELFTEST: OK" if good else "SELFTEST: BLAD")
 
     report = out_dir / "selftest_report.txt"
     report.write_text("\n".join(lines), encoding="utf-8")
     if sys.stdout is not None:      # w wersji .exe (--windowed) brak konsoli
         print("\n".join(lines))
-    return 0 if (ok and channels and params and bands) else 1
+    return 0 if good else 1
 
 
 def main() -> int:
