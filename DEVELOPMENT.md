@@ -28,7 +28,7 @@ run.bat                                            # Windows (pythonw, bez konso
 ## Testy
 
 ```
-.venv\Scripts\python.exe -m pytest tests\ -q       # 18 testów
+.venv\Scripts\python.exe -m pytest tests\ -q       # 66 testów
 ```
 
 Testy pokrywają: parser (nagłówki PL/EN/DE, kodowania, grupy 1/2/3, jednostki, kolumny binarne,

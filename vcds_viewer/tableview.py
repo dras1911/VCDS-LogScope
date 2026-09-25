@@ -378,11 +378,13 @@ class GroupedHeader(QtWidgets.QHeaderView):
             f.setPointSizeF(8.0)
             f.setBold(False)
             painter.setFont(f)
-            painter.drawText(
-                rect.adjusted(6, 3, -4, 0),
-                int(Qt.AlignLeft | Qt.AlignTop),
-                col.group_title,
+            grect = rect.adjusted(6, 3, -4, 0)
+            # ElideMiddle — przy wąskich kolumnach numer grupy (np. „020”) musi
+            # zostać widoczny („Grup… 020”), a nie ucięty jak „Grupa A: 0” (W19).
+            gtext = QtGui.QFontMetrics(f).elidedText(
+                col.group_title, Qt.TextElideMode.ElideMiddle, grect.width()
             )
+            painter.drawText(grect, int(Qt.AlignLeft | Qt.AlignTop), gtext)
         f = painter.font()
         f.setPointSizeF(8.8)
         f.setBold(True)

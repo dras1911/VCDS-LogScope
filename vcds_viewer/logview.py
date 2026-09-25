@@ -11,7 +11,7 @@ from .bandview import BandsChart
 from .chartview import LogChart, SeriesSpec
 from .colors import color_map
 from .flowlayout import FlowLayout
-from .formatting import fmt_num, fmt_time
+from .formatting import fmt_num, fmt_time, plural_przebieg
 from .model import X_RPM, X_TIME, Channel, LogData
 from .tableview import LogTable
 from .theme import Theme
@@ -406,9 +406,11 @@ class LogView(QtWidgets.QWidget):
                         "momenty mają różne wartości, więc linia tworzyłaby zygzaki — włącz "
                         "„Rysowanie: Średnia”, aby zobaczyć gładką charakterystykę.")
                 if len(segments) > 1:
-                    text += f" Danych jest {len(segments)} przebiegów."
+                    text += (f" Danych jest {len(segments)} "
+                             f"{plural_przebieg(len(segments))}.")
             elif len(segments) > 1:
-                text = (f"Oś X = obroty: linie podzielone na {len(segments)} przebiegi i posortowane "
+                text = (f"Oś X = obroty: linie podzielone na {len(segments)} "
+                        f"{plural_przebieg(len(segments))} i posortowane "
                         "po obrotach (bez pętli). Obroty są osią, nie serią. Wiersz tabeli odpowiada "
                         "jednej wartości obrotów, więc kursor może przeskakiwać między przebiegami.")
             else:

@@ -331,7 +331,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         n = log.n_rows
         self.lbl_rows.setText(
-            f"{n} wierszy  •  {len(log.groups)} grupy  •  {log.duration:.1f} s  "
+            f"{n} wierszy  •  {len(log.groups)} grupy  •  {fmt_time(log.duration, 1)} s  "
             f"•  {len(log.numeric_channels)} parametrów"
         )
 
@@ -399,7 +399,7 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<b>Sterownik:</b> {log.meta.ecu}",
             f"<b>Silnik:</b> {log.meta.engine}",
             f"<b>VCDS:</b> {log.meta.vcds_version}  ({log.meta.data_version})",
-            f"<b>Czas trwania:</b> {log.duration:.2f} s, wierszy: {log.n_rows}",
+            f"<b>Czas trwania:</b> {fmt_time(log.duration, 2)} s, wierszy: {log.n_rows}",
             "<br><b>Grupy i parametry:</b>",
         ]
         for g in log.groups:

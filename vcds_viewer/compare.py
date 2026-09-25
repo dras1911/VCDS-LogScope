@@ -852,7 +852,25 @@ class CompareView(QtWidgets.QWidget):
         self.refresh()
 
     def _on_cursor(self, x: float):
-        self.cursorMoved.emit(x, float("nan"), self)
+        """Kursor → pasek statusu: emitowany jest CZAS i OBBROTY, nie pozycja osi (W19).
+
+        Wcześniej emitowano samo `x` (pozycję na osi X). Przy osi obrotów `x`
+        to obroty — pasek statusu pokazywał wtedy „kursor: 4640,00 s”, czyli
+        obroty z jednostką sekund. Teraz liczymy czas i obroty tak samo jak
+        w widoku pojedynczego logu (LogView).
+        """
+        base = self.logs[self.base] if self.base < len(self.logs) else self.logs[0]
+        if self.x_mode == X_TIME:
+            t = x
+            rpm = base.rpm_nearest(x)
+        else:
+            t = base.time_for_rpm(x)
+            rpm = x
+        self.cursorMoved.emit(
+            float(t) if t is not None else x,
+            float(rpm) if rpm is not None else float("nan"),
+            self,
+        )
 
     def _secondary_text(self, x: float) -> str:
         """Obroty przy osi czasu (na podstawie logu bazowego) albo czas przy osi obrotów."""
@@ -912,13 +930,14 @@ class CompareView(QtWidgets.QWidget):
         tag = self.tags[other_idx] if other_idx < len(self.tags) else "B"
         if contrast < 0.05 or score < 0.2:
             self._align_hint = (
-                f"Dopasowanie w czasie niepewne (zgodność {score:.2f}, kontrast {contrast:.2f}) — "
+                f"Dopasowanie w czasie niepewne (zgodność {fmt_num(score, 2)}, "
+                f"kontrast {fmt_num(contrast, 2)}) — "
                 f"logi mogą być z różnych przejazdów. Ustaw „Przesunięcie {tag}” ręcznie."
             )
         else:
             self._align_hint = (
-                f"Dopasowano w czasie: log {tag} przesunięty o {off:+.2f} s "
-                f"(zgodność {score:.2f}, {used} wspólnych parametrów)."
+                f"Dopasowano w czasie: log {tag} przesunięty o {fmt_delta(off, 2)} s "
+                f"(zgodność {fmt_num(score, 2)}, {used} wspólnych parametrów)."
             )
         self.refresh()
 

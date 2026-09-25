@@ -40,3 +40,12 @@ def fmt_int(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value:,.0f}".replace(",", "\u00a0")
+
+
+def plural_przebieg(n: int) -> str:
+    """Odmiana rzeczownika „przebieg”: 1 przebieg, 2–4 przebiegi, 5+ przebiegów."""
+    if n == 1:
+        return "przebieg"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "przebiegi"
+    return "przebiegów"

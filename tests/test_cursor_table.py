@@ -130,3 +130,23 @@ def test_status_time_matches_clicked_row(app, log):
     t = float(group.t[row])
     view.set_cursor_time(t)
     assert seen and seen[-1] == pytest.approx(t, abs=1e-6)
+
+
+def test_compare_cursor_emits_time_and_rpm_on_rpm_axis(app, log):
+    """W oknie porównania przy osi obrotów pasek statusu dostaje CZAS i OBROTY.
+
+    Regresja: emitowano surowe `x` (obroty) jako czas — pasek statusu pokazywał
+    „kursor: 4640,00 s”.
+    """
+    from vcds_viewer.compare import CompareView
+
+    view = CompareView([log, log], DARK, None)
+    view.cmb_x.setCurrentIndex(1)               # oś obrotów
+    seen: list[tuple[float, float]] = []
+    view.cursorMoved.connect(lambda t, rpm, src: seen.append((t, rpm)))
+    view._on_cursor(3000.0)
+    assert seen, "sygnał kursora nie został wyemitowany"
+    t, rpm = seen[-1]
+    assert rpm == pytest.approx(3000.0), "obroty nie trafiły do sygnału"
+    assert t != pytest.approx(3000.0), "czas nie może być surową pozycją osi"
+    assert 0.0 <= t <= log.duration + 1e-6, f"czas {t} poza zakresem logu"

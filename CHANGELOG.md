@@ -3,6 +3,21 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.6 — 25 września 2026
+
+**Naprawione (na podstawie zgłoszeń)**
+
+- **Pasek statusu w oknie porównania przy osi obrotów.** Pokazywał obroty jako czas —
+  „kursor: 4640,00 s” zamiast prawdziwego czasu zdarzenia. Teraz przy osi obrotów widać
+  poprawnie czas i obroty w miejscu kursora, tak samo jak w widoku pojedynczego logu.
+- **Nagłówki kolumn tabeli nie gubią już numeru grupy.** Przy wąskich kolumnach program
+  ucinał tekst w połowie — było „Grupa A: 0”, a numer grupy (020/115/118) znikał.
+  Teraz skrót zachowuje numer: „Gru…020”.
+- **Liczby po polsku w komunikatach.** „Zgodność 0,61”, „przesunięty o −5,04 s”,
+  „czas trwania 93,2 s” — wcześniej w tych miejscach była kropka dziesiętna.
+- **Odmiana słowa „przebieg”** w podpowiedzi przy osi obrotów — jest „7 przebiegów”,
+  a nie „7 przebiegi”.
+
 ## 1.0.5 — 24 września 2026
 
 **Nowe**
