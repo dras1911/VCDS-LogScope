@@ -194,8 +194,11 @@ def smoke_test(exe: Path) -> bool:
     def _show_state() -> None:
         for f in (trace, marker, report):
             if f.exists():
-                tail = f.read_text(encoding="utf-8", errors="replace").strip()[-700:]
-                print(f"    {f.name}: " + tail.replace("\n", "\n      "), flush=True)
+                try:
+                    tail = f.read_text(encoding="utf-8", errors="replace").strip()[-700:]
+                    print(f"    {f.name}: " + tail.replace("\n", "\n      "), flush=True)
+                except Exception:      # diagnostyka nie może wywalić samego smoke'u
+                    pass
 
     _cleanup()
     print("Autotest paczki (bez okna):", exe.name, "…", flush=True)
@@ -255,11 +258,11 @@ def make_shortcut(exe: Path) -> None:
 
 
 def main() -> int:
-    # log na CI ma być widoczny na bieżąco (buforowanie liniowe), bo przy awarii
-    # nie zobaczymy nic z bufora wyjścia procesu
+    # log na CI ma być widoczny na bieżąco (buforowanie liniowe) i odporny na
+    # konsolę bez polskich znaków (cp1252 na runnerach) — stąd utf-8 + zastępowanie
     try:
-        sys.stdout.reconfigure(line_buffering=True)
-        sys.stderr.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
     except Exception:
         pass
 

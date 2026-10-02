@@ -217,7 +217,14 @@ def _selftest(argv: list[str]) -> int:
     report.write_text("\n".join(lines), encoding="utf-8")
     if sys.stdout is not None:      # w wersji .exe (--windowed) brak konsoli
         print("\n".join(lines))
-    return 0 if good else 1
+    # Tryb testowy kończymy twardo: w spakowanej aplikacji na maszynach CI zamknięcie
+    # interpretera potrafi zawisnąć po wykonanej pracy (objaw: raport gotowy, proces
+    # żyje do limitu smoke), a os._exit gwarantuje deterministyczne zakończenie.
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    os._exit(0 if good else 1)
 
 
 def main() -> int:
@@ -258,11 +265,18 @@ def main() -> int:
         _failsafe_gui.daemon = True
         _failsafe_gui.start()
     rc = exec_app(app)
+    # tryb testowy kończymy twardo (deterministycznie) — w spakowanej aplikacji na CI
+    # samo zamknięcie potrafi zawisnąć po zakończeniu pętli zdarzeń
     if marker is not None:
         try:
             marker.write_text(f"koniec rc={rc}", encoding="utf-8")
         except OSError:
             pass
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        os._exit(rc)
     return rc
 
 

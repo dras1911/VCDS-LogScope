@@ -53,7 +53,10 @@ jobs:
           VCDS_SMOKE_GUI: warn
         run: |
           .venv\Scripts\python tools\build_exe.py --no-shortcut
+          if errorlevel 1 set BUILD_FAIL=1
           .venv\Scripts\python tools\build_exe.py --onefile --no-shortcut
+          if errorlevel 1 set BUILD_FAIL=1
+          if defined BUILD_FAIL exit /b 1
 
       - name: Paczka portable (ZIP)
         shell: pwsh
