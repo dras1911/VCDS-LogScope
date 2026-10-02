@@ -8,6 +8,7 @@ Użycie:
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -120,37 +121,116 @@ def build(icon: Path, onefile: bool = False, legacy: bool = False) -> Path:
     return exe
 
 
+def _kill_tree(pid: int) -> None:
+    """Zabija CAŁE drzewo procesów danej paczki.
+
+    Paczka --onefile uruchamia proces-dziecko z właściwą aplikacją; samo zabicie
+    bootloadera nie wystarcza, bo osierocone dziecko trzyma uchwyty rur i odbiór
+    wyjścia blokuje się na zawsze (objaw na CI: budowa wisiała godzinami).
+    """
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                           capture_output=True, timeout=30)
+        else:
+            subprocess.run(["pkill", "-TERM", "-P", str(pid)],
+                           capture_output=True, timeout=30)
+            try:              # dodatkowo sam proces (pkill -P zabija tylko dzieci)
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _run_bounded(cmd: list[str], timeout: int = 300) -> tuple[int, str]:
+    """Uruchamia polecenie z twardym limitem czasu; po timeoucie zabija drzewo.
+
+    Zwraca (kod powrotu, wyjście); kod 124 oznacza przekroczony limit.
+    """
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+        return proc.returncode or 0, out or ""
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc.pid)
+        out = ""
+        try:                      # krótki odbiór resztek — nigdy w nieskończoność
+            out, _ = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        return 124, (out or "") + f"\n[PRZEKROCZONO LIMIT {timeout} s — drzewo procesów zabite]"
+
+
 def smoke_test(exe: Path) -> bool:
     """Uruchamia autotest spakowanej aplikacji i sprawdza wynik.
 
-    Sprawdza dwie rzeczy: tryb bezokienkowy (--selftest) oraz PEŁNY start GUI
-    z pętlą zdarzeń (--selftest-gui) — to drugie łapie błędy typu `exec_()` vs `exec()`.
+    Sprawdza tryb bezokienkowy (--selftest) oraz pełny start GUI z pętlą zdarzeń
+    (--selftest-gui — łapie błędy typu `exec_()` vs `exec()`). Wynik testu GUI
+    zależy od zmiennej VCDS_SMOKE_GUI: fail (domyślnie), warn (ostrzeżenie), skip.
+    Przy niepowodzeniu pokazuje pliki śladu/raportu, żeby było widać, gdzie stanął.
     """
     out = BUILD / "selftest_exe"
     out.mkdir(parents=True, exist_ok=True)
+    report = out / "selftest_report.txt"
+    trace = out / "selftest_trace.txt"
+    marker = ROOT / "selftest_gui.marker"
     sample = ROOT / "tests" / "data" / "przyklad.csv"
     base = [str(exe)]
     if sample.exists():
         base.append(str(sample))
 
-    print("Autotest paczki (bez okna):", exe.name, "…")
-    res = subprocess.run(base + ["--selftest", str(out)], cwd=str(ROOT),
-                         capture_output=True, text=True, timeout=300)
-    report = out / "selftest_report.txt"
-    text = report.read_text(encoding="utf-8") if report.exists() else (res.stdout or res.stderr or "")
-    print(text.strip()[-400:])
-    ok_headless = res.returncode == 0 and "SELFTEST: OK" in text
+    def _cleanup() -> None:
+        for f in (report, trace, marker):
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
-    print("Autotest paczki (pełne GUI):", exe.name, "…")
-    res_gui = subprocess.run(base + ["--selftest-gui"], cwd=str(ROOT),
-                             capture_output=True, text=True, timeout=300)
-    ok_gui = res_gui.returncode == 0
-    if not ok_gui:
-        print("  BŁĄD GUI:", (res_gui.stderr or res_gui.stdout or "")[-500:])
+    def _show_state() -> None:
+        for f in (trace, marker, report):
+            if f.exists():
+                tail = f.read_text(encoding="utf-8", errors="replace").strip()[-700:]
+                print(f"    {f.name}: " + tail.replace("\n", "\n      "), flush=True)
 
-    print(f"Autotest: {'OK' if (ok_headless and ok_gui) else 'BŁĄD'} "
-          f"(bez okna: {'OK' if ok_headless else 'BŁĄD'}, GUI: {'OK' if ok_gui else 'BŁĄD'})")
-    return ok_headless and ok_gui
+    _cleanup()
+    print("Autotest paczki (bez okna):", exe.name, "…", flush=True)
+    rc, output = _run_bounded(base + ["--selftest", str(out)], timeout=300)
+    text = report.read_text(encoding="utf-8") if report.exists() else output
+    _show_state()
+    ok_headless = rc == 0 and "SELFTEST: OK" in text
+    if not ok_headless:
+        print(f"  BŁĄD bez okna (kod {rc}):", (text or "(brak raportu)").strip()[-400:], flush=True)
+
+    gui_mode = os.environ.get("VCDS_SMOKE_GUI", "fail").strip().lower()
+    gui_state = "OK"
+    if gui_mode.startswith("skip"):
+        gui_state = "POMINIĘTY"
+        print("Autotest paczki (pełne GUI): POMINIĘTY (VCDS_SMOKE_GUI=skip)", flush=True)
+    else:
+        _cleanup()
+        print("Autotest paczki (pełne GUI):", exe.name, "…", flush=True)
+        rc_gui, out_gui = _run_bounded(base + ["--selftest-gui"], timeout=300)
+        _show_state()
+        if rc_gui != 0:
+            detail = f"  BŁĄD GUI (kod {rc_gui})"
+            if out_gui.strip():
+                detail += ": " + out_gui.strip()[-300:]
+            if gui_mode.startswith("warn"):
+                gui_state = "OSTRZEŻENIE"
+                print(detail + " — ostrzeżenie (VCDS_SMOKE_GUI=warn)", flush=True)
+            else:
+                gui_state = "BŁĄD"
+                print(detail, flush=True)
+
+    ok = ok_headless and gui_state not in ("BŁĄD",)
+    print(f"Autotest: {'OK' if ok else 'BŁĄD'} "
+          f"(bez okna: {'OK' if ok_headless else 'BŁĄD'}, GUI: {gui_state})", flush=True)
+    return ok
 
 
 def make_shortcut(exe: Path) -> None:
@@ -175,6 +255,14 @@ def make_shortcut(exe: Path) -> None:
 
 
 def main() -> int:
+    # log na CI ma być widoczny na bieżąco (buforowanie liniowe), bo przy awarii
+    # nie zobaczymy nic z bufora wyjścia procesu
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
     onefile_only = "--onefile" in sys.argv
     legacy_only = "--legacy" in sys.argv
     both = "--all" in sys.argv

@@ -29,14 +29,39 @@ def _selftest(argv: list[str]) -> int:
     out_dir = Path(argv[-1]) if argv and not argv[-1].lower().endswith((".csv", ".txt")) else Path.cwd()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # ślad postępu: przy zawieszeniu na maszynie bez użytkownika widać, na którym
+    # kroku stanął autotest (build_exe pokazuje ten plik przy niepowodzeniu)
+    trace = out_dir / "selftest_trace.txt"
+
+    def _note(step: str) -> None:
+        try:
+            with trace.open("a", encoding="utf-8") as fh:
+                fh.write(step + "\n")
+                fh.flush()
+        except OSError:
+            pass
+
+    import threading
+
+    # awaryjne wyjście: gdyby zamknięcie blokowało się bez końca (np. niewidoczny
+    # komunikat modalny na maszynie bez użytkownika), smoke dostanie kod 9
+    # zamiast wisieć godzinami
+    _failsafe = threading.Timer(240.0, os._exit, args=(9,))
+    _failsafe.daemon = True
+    _failsafe.start()
+    _note("start")
+
     app = QtWidgets.QApplication(sys.argv[:1])
+    _note("qapp")
     win = MainWindow()
+    _note("okno")
     win.resize(1500, 900)
     win.ensurePolished()
     QtWidgets.QApplication.processEvents()
 
     win.open_path(log_path)
     QtWidgets.QApplication.processEvents()
+    _note("log")
     view = win.tabs.currentWidget()
     view.chart.set_cursor_x(20.4, emit=True)
     QtWidgets.QApplication.processEvents()
@@ -48,6 +73,7 @@ def _selftest(argv: list[str]) -> int:
     view.bands.set_cursor_x(20.4, emit=True)
     QtWidgets.QApplication.processEvents()
     bands = len(view.bands.visible_lanes())
+    _note("pasma")
 
     from .compare import CompareView
     from .parser import parse_log
@@ -61,6 +87,7 @@ def _selftest(argv: list[str]) -> int:
     cmp_view.chart.set_cursor_x(20.4, emit=True)
     cmp_view.tabs.setCurrentIndex(1)
     QtWidgets.QApplication.processEvents()
+    _note("porownanie")
 
     ok = True
     lines: list[str] = []
@@ -68,6 +95,7 @@ def _selftest(argv: list[str]) -> int:
         path = out_dir / f"{name}.png"
         ok = widget.grab().save(str(path)) and ok
         lines.append(f"SELFTEST: zapisano {path}")
+    _note("zrzuty")
 
     # --- kursor przy OBU osiach: pasek statusu musi dostać prawdziwy czas i obroty.
     # Regresja z 1.0.6: okno porównania przy osi obrotów wysyłało obroty jako czas
@@ -134,6 +162,7 @@ def _selftest(argv: list[str]) -> int:
     view.chk_select.setChecked(False)
     view.cmb_x.setCurrentIndex(0)
     QtWidgets.QApplication.processEvents()
+    _note("zaznaczenie")
 
     # --- suwaki pod wykresem: przesuwanie i powiększanie muszą działać w obu oknach
     nav_ok = False
@@ -164,6 +193,7 @@ def _selftest(argv: list[str]) -> int:
         lines.append("SELFTEST: suwaki: " + "; ".join(parts))
     except Exception as exc:             # raport zamiast wyjątku znikąd
         lines.append(f"SELFTEST: suwaki: BŁĄD {exc}")
+    _note("suwaki")
 
     # zrzut z przybliżeniem zrobionym suwakiem (dowód dla przeglądu wydania)
     try:
@@ -174,6 +204,7 @@ def _selftest(argv: list[str]) -> int:
     except Exception as exc:
         lines.append(f"SELFTEST: zrzut suwaków: BŁĄD {exc}")
 
+    _note("raport")
     lines.append(f"SELFTEST: wersja {__version__}")
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
                  f"parametry_wspolne={params} siatka={rows} pasma={bands}")
@@ -200,13 +231,39 @@ def main() -> int:
     app.setWindowIcon(app_icon())
     win = MainWindow()
     win.show()
+    marker: Path | None = None
     if "--selftest-gui" in sys.argv:
-        # test dymny: pełny start GUI (z pętlą zdarzeń), zamyka się sam po 4 sekundach
+        # test dymny: pełny start GUI (z pętlą zdarzeń), sam się zamyka po 4 sekundach
+        import threading
         log_path = next((a for a in sys.argv[1:] if a.lower().endswith((".csv", ".txt"))), None)
         if log_path:
             win.open_path(log_path)
-        QtCore.QTimer.singleShot(4000, app.quit)
-    return exec_app(app)
+        marker = Path.cwd() / "selftest_gui.marker"
+
+        def _mark(text: str) -> None:
+            try:
+                marker.write_text(text, encoding="utf-8")
+            except OSError:
+                pass
+
+        def _quit() -> None:
+            _mark("timer")
+            app.quit()
+
+        _mark("petla")
+        QtCore.QTimer.singleShot(4000, _quit)
+        # awaryjne wyjście: gdyby quit() nie zakończył pętli (np. modalny komunikat
+        # schowany na maszynie bez użytkownika), smoke dostanie kod 9 zamiast wisieć
+        _failsafe_gui = threading.Timer(30.0, os._exit, args=(9,))
+        _failsafe_gui.daemon = True
+        _failsafe_gui.start()
+    rc = exec_app(app)
+    if marker is not None:
+        try:
+            marker.write_text(f"koniec rc={rc}", encoding="utf-8")
+        except OSError:
+            pass
+    return rc
 
 
 if __name__ == "__main__":

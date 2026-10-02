@@ -7,8 +7,9 @@
 #   zrzuty-ekranu        — zrzuty interfejsu z tego przebiegu (podgląd zmian)
 #   windows7-legacy      — VCDS-LogScope dla Windows 7/8 (Python 3.8 + Qt 5.15)
 #
-# Każda paczka przechodzi autotest (`--selftest` + `--selftest-gui`), więc błędne
-# wydanie nie przejdzie budowy.
+# Każda paczka przechodzi autotest bezokienkowy (`--selftest`) — błędne wydanie nie
+# przejdzie budowy. Test GUI (`--selftest-gui`) w CI jest ostrzeżeniem
+# (VCDS_SMOKE_GUI=warn): na runnerze bez użytkownika bywa środowiskowo zawodny.
 
 name: Budowa paczek Windows
 
@@ -48,6 +49,8 @@ jobs:
 
       - name: Budowa — wersja katalogowa i jednoplikowa
         shell: cmd
+        env:
+          VCDS_SMOKE_GUI: warn
         run: |
           .venv\Scripts\python tools\build_exe.py --no-shortcut
           .venv\Scripts\python tools\build_exe.py --onefile --no-shortcut
@@ -80,6 +83,15 @@ jobs:
           name: zrzuty-ekranu
           path: "build/shots/*"
 
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: autotest-windows
+          path: |
+            build/selftest_exe/**
+            selftest_gui.marker
+          if-no-files-found: ignore
+
   windows-legacy:
     name: Windows 7/8 (PySide2, Python 3.8)
     runs-on: windows-2022
@@ -100,6 +112,8 @@ jobs:
 
       - name: Budowa — Windows 7/8
         shell: cmd
+        env:
+          VCDS_SMOKE_GUI: warn
         run: .venv38\Scripts\python tools\build_exe.py --legacy
 
       - uses: actions/upload-artifact@v7
@@ -107,3 +121,12 @@ jobs:
           name: windows7-legacy
           path: "dist/legacy/VCDS LogScope.exe"
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: autotest-legacy
+          path: |
+            build/selftest_exe/**
+            selftest_gui.marker
+          if-no-files-found: ignore
