@@ -32,6 +32,9 @@ i możliwość porównania kilku logów między sobą.
   i porównywać; obroty przestają być wtedy rysowane jako seria, bo są osią
 - „Normalizuj” przydaje się w widoku nakładanym, gdy parametry mają bardzo różne wartości
   (obroty 0–6000, a temperatura 80–90) — wtedy widać kształt każdej linii
+- **suwaki pod wykresem**: „Powiększenie” przybliża i oddala wykres w poziomie, a suwak
+  widoku (jak pasek przewijania) przesuwa oglądany fragment po całym logu — dla tych,
+  którzy wolą suwak od rolki myszy
 - **„Zaznacz fragment”**: zaznacz myszą kawałek przejazdu (np. jedno przyspieszanie) i pod
   wykresem dostajesz minimum, średnią i maksimum każdego parametru tylko z tego fragmentu —
   krawędzie zaznaczenia można przesuwać myszą, a złapanie środka przesuwa całe zaznaczenie
@@ -90,6 +93,7 @@ Numer wersji znajdziesz w programie: menu **Pomoc → O programie**.
 | klik / `Esc` | przypnij / odepnij kursor |
 | rolka myszy | przybliżanie w poziomie (`Ctrl`+rolka — w pionie) |
 | dwuklik | dopasuj widok do całego logu |
+| suwaki pod wykresem | powiększenie i przesuwanie oglądanego fragmentu |
 
 ## Obsługiwane logi
 
@@ -121,6 +125,11 @@ np. `Stab.b.jałowego #1`, `#2`. Nazwa grupy jest w nagłówku kolumny.
 Przy 6 i więcej parametrach przełącz **Widok: Pasma** — każdy parametr dostaje wtedy osobny
 pas z własną skalą i nic na siebie nie nachodzi. W widoku nakładanym pomaga też wyłączenie
 zbędnych parametrów w panelu po lewej albo „Normalizuj”.
+
+**Jak powiększyć wykres i dojechać do wybranego miejsca?**
+Rolką myszy przybliżasz, przeciąganiem przesuwasz, a dwuklik wraca do całego logu.
+Pod wykresem są też suwaki: „Powiększenie” i suwak widoku — działają tak samo jak rolka
+i przeciąganie; przyciski − / + obok „Dopasuj” służą do drobnych kroków.
 
 ## Autor i licencja
 

@@ -28,7 +28,7 @@ run.bat                                            # Windows (pythonw, bez konso
 ## Testy
 
 ```
-.venv\Scripts\python.exe -m pytest tests\ -q       # 66 testów
+.venv\Scripts\python.exe -m pytest tests\ -q       # 98 testów
 ```
 
 Testy pokrywają: parser (nagłówki PL/EN/DE, kodowania, grupy 1/2/3, jednostki, kolumny binarne,
@@ -43,6 +43,12 @@ wartość obrotów przy kursorze) oraz przypisywanie kolorów.
 .venv\Scripts\python.exe tools\build_exe.py --legacy   # jednoplikowa dla Windows 7/8
 .venv\Scripts\python.exe tools\build_exe.py --all      # wszystkie trzy
 ```
+
+Wersje dla Windows można też zbudować **w chmurze — bez komputera z Windows**:
+zakładka **Actions → „Budowa paczek Windows” → Run workflow** uruchamia testy, robi
+zrzuty interfejsu i buduje wszystkie trzy paczki; gotowe pliki lądują w sekcji
+**Artifacts** przebiegu (`windows-onefile`, `windows-onedir`, `windows-portable-zip`,
+`windows7-legacy`). Każda paczka przechodzi autotest — błędna nie przejdzie budowy.
 
 Skrypt rysuje ikonę (QPixmap → PNG → `.ico` przez Pillow), buduje paczkę PyInstaller,
 **uruchamia autotest gotowego .exe** i tworzy skrót na pulpicie.
@@ -87,6 +93,7 @@ vcds_viewer/
   colors.py      # paleta kolorów parametrów + unikalne kolory serii
   chartview.py   # wykres nakładany, kursor, dymek, etykieta przy osi X
   bandview.py    # widok pasm: jeden parametr = jeden wykres, wspólny kursor
+  navigator.py   # suwaki pod wykresem: powiększenie i przesuwanie widoku
   tableview.py   # tabela: heatmapa, strzałki zmian, nagłówek grupowy
   compare.py     # porównanie logów: nakładka + tabela różnic + statystyki
   logview.py     # widok jednego logu (wykres + panel parametrów + tabela)
@@ -113,6 +120,11 @@ starszej wersji, jeśli nowsza coś popsuje. Opis zmian dla wersji dopisuje się
 powershell -c "Compress-Archive -Path 'dist\VCDS LogScope\*' -DestinationPath 'dist\VCDS-LogScope-portable.zip' -Force"
 .venv\Scripts\python.exe tools\create_release.py            # wersja z pakietu, tag vX.Y.Z
 ```
+
+Zamiast budować na Windows można pobrać paczki z przebiegu GitHub Actions
+(„Budowa paczek Windows”) i rozłożyć je w `dist/` pod te same nazwy:
+`windows-onefile` → `dist/onefile/`, `windows-onedir` → `dist/`,
+`windows7-legacy` → `dist/legacy/`, `windows-portable-zip` → `dist/`.
 
 `create_release.py` korzysta z poświadczeń zapisanych przez Git Credential Manager
 (nic nie trzeba wpisywać), zakłada tag na bieżącym commicie, wypycha go, tworzy **nowe**

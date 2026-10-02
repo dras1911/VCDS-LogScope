@@ -3,6 +3,34 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.10 — 2 października 2026
+
+**Nowe**
+
+- **Suwaki pod wykresem — powiększenie i przesuwanie.** Pod każdym wykresem (widok nakładany,
+  widok pasm i okno porównania) są teraz dwa suwaki: „Powiększenie” — w prawo przybliża,
+  w lewo oddala; oraz suwak widoku, którym przejeżdżasz do wybranego miejsca w logu, jak
+  paskiem przewijania. Szerokość uchwytu pokazuje, jak duży fragment logu widać. Oba suwaki
+  odzwierciedlają na bieżąco stan wykresu — rolka myszy, przyciski − / + i „Dopasuj” też
+  je przestawiają. Prośba użytkownika: „przydałby się suwak, żeby móc powiększyć wykres
+  i przesunąć do miejsca, gdzie potrzeba”.
+
+**Ulepszenia**
+
+- **Przełączenie widoku albo zmiana parametrów nie gubi powiększenia.** Gdy ustawisz suwakami
+  fragment do oglądania i potem przełączysz „Nakładany ↔ Pasma” (albo włączysz inny parametr),
+  oglądany fragment zostaje — dopiero zmiana osi X (czas ↔ obroty) startuje od całego logu,
+  bo tam zmieniają się jednostki.
+- **Autotest każdej paczki sprawdza suwaki** — wbudowany autotest, uruchamiany przy każdej
+  budowie .exe, przechodzi przez powiększenie i przesunięcie tak w oknie pojedynczego logu,
+  jak i porównania; niedziałające suwaki nie przejdą budowy.
+
+**Budowanie**
+
+- **Paczki Windows buduje GitHub Actions** (zakładka Actions → „Budowa paczek Windows” →
+  Run workflow): testy, zrzuty ekranu i komplet trzech .exe jednym kliknięciem — nie trzeba
+  już budować na własnym komputerze z Windows.
+
 ## 1.0.9 — 25 września 2026
 
 **Nowe**

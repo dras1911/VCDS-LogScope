@@ -11,6 +11,7 @@ from .qt import QAction, Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .colors import hex_to_rgba
 from .formatting import fmt_num
+from .navigator import ChartNavigator
 from .theme import Theme
 
 
@@ -156,6 +157,8 @@ class LogChart(QtWidgets.QWidget):
         self._x_mode = "time"
         self._x_unit = "s"
         self._user_zoomed = False
+        self._x_bounds: Optional[tuple[float, float]] = None
+        self._x_reset_pending = False
 
         pg.setConfigOptions(antialias=True, background=theme.plot_bg, foreground=theme.text_dim)
 
@@ -163,7 +166,9 @@ class LogChart(QtWidgets.QWidget):
         self.pw.setMenuEnabled(False)
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.pw)
+        lay.addWidget(self.pw, 1)
+        self.nav = ChartNavigator()
+        lay.addWidget(self.nav)
 
         self.plot = self.pw.getPlotItem()
         self.vb = self.plot.vb
@@ -238,6 +243,7 @@ class LogChart(QtWidgets.QWidget):
 
         self.plot.vb.sigRangeChanged.connect(self._on_range_changed)
         self.plot.vb.sigRangeChangedManually.connect(self._on_manual_range)
+        self.nav.rangeRequested.connect(self._on_nav_range)
         self.pw.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.pw.scene().sigMouseClicked.connect(self._on_mouse_clicked)
         self.pw.installEventFilter(self)
@@ -249,8 +255,10 @@ class LogChart(QtWidgets.QWidget):
 
     def set_x_axis(self, mode: str, unit: str, label: str):
         if mode != self._x_mode:
-            # zmiana jednostek osi — stare zaznaczenie nie ma już sensu
+            # zmiana jednostek osi — stare zaznaczenie nie ma już sensu,
+            # a przybliżenie widoku trzeba będzie policzyć od nowa
             self.vb.set_selection(None, None)
+            self._x_reset_pending = True
         self._x_mode, self._x_unit = mode, unit
         self.plot.getAxis("bottom").setLabel(label, units=unit)
 
@@ -295,13 +303,26 @@ class LogChart(QtWidgets.QWidget):
         self.marker_label.hide()
         self.axis_badge.hide()
         self._crosshair_h.hide()
+        self._x_bounds = None
+        self.nav.set_domain(None, None)
 
     def set_series(self, specs: list[SeriesSpec]):
+        # Zmiana serii nie może zrzucać przybliżenia ustawionego przez użytkownika —
+        # po przebudowie wracamy do niego, o ile nie zmieniono osi X.
+        keep = None
+        if self._user_zoomed and not self._x_reset_pending:
+            keep = self.vb.viewRange()[0]
+        self._x_reset_pending = False
+        self._x_bounds = None
         self.clear()
         for spec in specs:
             self._add_series(spec)
         self._apply_visibility()
         self.fit()
+        if keep is not None:
+            self.vb.setXRange(float(keep[0]), float(keep[1]), padding=0.0)
+            self._user_zoomed = True
+        self._update_nav()
 
     def _add_series(self, spec: SeriesSpec):
         s = _Series(spec)
@@ -347,12 +368,14 @@ class LogChart(QtWidgets.QWidget):
         if s is None:
             return
         s.visible = visible
+        self._x_bounds = None
         self._apply_visibility()
         # jeśli użytkownik nie ustawił własnego zoomu, dopasuj skalę do widocznych serii
         if not self._user_zoomed:
             self.fit()
         if self._cursor_x is not None:
             self._refresh_cursor_items()
+        self._update_nav()
 
     def _apply_visibility(self):
         for s in self._series.values():
@@ -366,10 +389,14 @@ class LogChart(QtWidgets.QWidget):
                 if sid in self._series and self._series[sid].visible]
 
     def set_normalized(self, on: bool):
+        keep = self.vb.viewRange()[0] if self._user_zoomed else None
         self._normalized = on
         self.plot.getAxis("left").setLabel("% zakresu" if on else "Wartość")
         self._redraw_data()
         self.fit()
+        if keep is not None:
+            self.vb.setXRange(float(keep[0]), float(keep[1]), padding=0.0)
+            self._user_zoomed = True
 
     def normalized(self) -> bool:
         return self._normalized
@@ -432,11 +459,57 @@ class LogChart(QtWidgets.QWidget):
         pad_y = (ymax - ymin) * 0.08
         self.plot.vb.setXRange(xmin, xmax, padding=0.01)
         self.plot.vb.setYRange(ymin - pad_y, ymax + pad_y, padding=0.0)
+        self._update_nav()
 
     def zoom(self, factor: float):
         center = self.plot.vb.viewRange()
         cx = (center[0][0] + center[0][1]) / 2
         self.plot.vb.scaleBy((factor, 1.0), center=QtCore.QPointF(cx, 0))
+
+    # ---------------------------------------------------------- suwaki nawigacji
+    def _on_nav_range(self, x0: float, x1: float) -> None:
+        """Suwak pod wykresem prosi o nowy zakres widoku."""
+        self._user_zoomed = True
+        self.vb.setXRange(float(x0), float(x1), padding=0.0)
+
+    def view_x_range(self) -> Optional[tuple[float, float]]:
+        """Bieżący zakres osi X (albo None, gdy brak sensownych wartości)."""
+        lo, hi = self.vb.viewRange()[0]
+        if not (np.isfinite(lo) and np.isfinite(hi)) or hi <= lo:
+            return None
+        return float(lo), float(hi)
+
+    def set_view_x(self, x0: float, x1: float) -> None:
+        """Ustawia zakres osi X (bez ruszania osi Y); tak jak ustawienie przez użytkownika."""
+        self._user_zoomed = True
+        self.vb.setXRange(float(x0), float(x1), padding=0.0)
+
+    def _visible_xs(self) -> list[np.ndarray]:
+        xs = [s.px[np.isfinite(s.px)] for s in self.visible_series()]
+        return [a for a in xs if len(a)]
+
+    def _data_x_bounds(self) -> Optional[tuple[float, float]]:
+        """Zakres X danych widocznych serii (liczony raz, dopóki serie się nie zmienią)."""
+        if self._x_bounds is None:
+            xs = self._visible_xs()
+            if not xs:
+                return None
+            lo = min(float(a.min()) for a in xs)
+            hi = max(float(a.max()) for a in xs)
+            if hi <= lo:
+                hi = lo + 1.0
+            self._x_bounds = (lo, hi)
+        return self._x_bounds
+
+    def _update_nav(self) -> None:
+        """Przekazuje suwakom pełny zakres danych i bieżący widok."""
+        bounds = self._data_x_bounds()
+        if bounds is None:
+            self.nav.set_domain(None, None)
+            return
+        self.nav.set_domain(bounds[0], bounds[1])
+        x0, x1 = self.vb.viewRange()[0]
+        self.nav.set_view(x0, x1)
 
     # -------------------------------------------------------------- kursor
     def cursor_x(self) -> Optional[float]:
@@ -614,6 +687,7 @@ class LogChart(QtWidgets.QWidget):
             self.plot.getAxis("right").setRange(*self.plot.vb.viewRange()[1])
         except Exception:
             pass
+        self._update_nav()
         if self._cursor_x is not None:
             self._place_tooltip(self._cursor_x)
             self._update_badge(self._cursor_x)

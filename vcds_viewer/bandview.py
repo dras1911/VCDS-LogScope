@@ -15,6 +15,7 @@ from .qt import Qt, QtCore, QtGui, QtWidgets, Signal
 
 from .chartview import LogViewBox, SeriesSpec
 from .formatting import fmt_num
+from .navigator import ChartNavigator
 from .theme import Theme
 
 
@@ -54,6 +55,8 @@ class BandsChart(QtWidgets.QWidget):
         self._pinned = False
         self._user_zoomed = False
         self._snap = True
+        self._x_bounds: Optional[tuple[float, float]] = None
+        self._x_reset_pending = False
 
         pg.setConfigOptions(antialias=True, background=theme.plot_bg, foreground=theme.text_dim)
 
@@ -61,7 +64,9 @@ class BandsChart(QtWidgets.QWidget):
         self.glw.setBackground(theme.plot_bg)
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.glw)
+        lay.addWidget(self.glw, 1)
+        self.nav = ChartNavigator()
+        lay.addWidget(self.nav)
 
         self.badge = QtWidgets.QLabel(self.glw)
         self.badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -73,6 +78,7 @@ class BandsChart(QtWidgets.QWidget):
         self.glw.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.glw.scene().sigMouseClicked.connect(self._on_mouse_clicked)
         self.glw.installEventFilter(self)
+        self.nav.rangeRequested.connect(self._on_nav_range)
 
     # ------------------------------------------------------------------ API
     def set_secondary_fn(self, fn):
@@ -100,6 +106,8 @@ class BandsChart(QtWidgets.QWidget):
             vb.setXRange(x + pad - span, x + pad, padding=0.0)
 
     def set_x_axis(self, mode: str, unit: str, label: str):
+        if mode != self._x_mode:
+            self._x_reset_pending = True
         self._x_mode, self._x_unit = mode, unit
         self._axis_label = label
         for lane in self._lanes.values():
@@ -110,17 +118,32 @@ class BandsChart(QtWidgets.QWidget):
         self._lanes.clear()
         self._order.clear()
         self._cursor_x = None
+        self._x_bounds = None
         self.badge.hide()
+        self.nav.set_domain(None, None)
         self.glw.clear()
 
     def set_series(self, specs: list[SeriesSpec]):
         """Buduje pasy — po jednym na serię (kolejność jak w panelu parametrów)."""
+        # jak w widoku nakładanym: przebudowa nie zrzuca przybliżenia użytkownika
+        keep = None
+        if self._user_zoomed and not self._x_reset_pending:
+            vb = self._first_vb()
+            if vb is not None:
+                keep = vb.viewRange()[0]
+        self._x_reset_pending = False
         self.clear()
         for spec in specs:
             self._add_lane(spec)
         self._layout_axes()
         self._apply_visibility()
         self.fit()
+        if keep is not None:
+            vb2 = self._first_vb()
+            if vb2 is not None:
+                vb2.setXRange(float(keep[0]), float(keep[1]), padding=0.0)
+            self._user_zoomed = True
+        self._update_nav()
 
     def _add_lane(self, spec: SeriesSpec):
         lane = _Lane(spec)
@@ -134,6 +157,10 @@ class BandsChart(QtWidgets.QWidget):
         plot.getAxis("left").setTextPen(pg.mkPen(self.theme.text_dim))
         plot.getAxis("left").setWidth(64)
         plot.setTitle(self._title(spec), color=self.theme.text_dim, size="10pt")
+        if row == 0:
+            # pierwszy pas wyznacza wspólną oś X — jego zmiany zasilają suwaki
+            plot.vb.sigRangeChanged.connect(self._update_nav)
+            plot.vb.sigRangeChangedManually.connect(self._on_manual_range)
 
         if spec.mode == "points":
             curve = pg.PlotDataItem(
@@ -201,12 +228,14 @@ class BandsChart(QtWidgets.QWidget):
         if lane is None:
             return
         lane.visible = visible
+        self._x_bounds = None
         self._apply_visibility()
         self._layout_axes()
         if not self._user_zoomed:
             self.fit()
         if self._cursor_x is not None:
             self._refresh_cursor()
+        self._update_nav()
 
     def _apply_visibility(self):
         for lane in self._lanes.values():
@@ -239,15 +268,79 @@ class BandsChart(QtWidgets.QWidget):
         first = next((lane.plot for lane in lanes if lane.plot is not None), None)
         if first is not None:
             first.vb.setXRange(xmin, xmax, padding=0.01)
+        self._update_nav()
 
     def zoom(self, factor: float):
         lanes = [lane for lane in self.visible_lanes() if lane.plot is not None]
         if not lanes:
             return
+        # pasy mają wspólną (połączoną) oś X — wystarczy przeskalować pierwszy z nich;
+        # skalowanie każdego z osobna mnożyłoby krok tyle razy, ile jest pasów
         rng = lanes[0].plot.vb.viewRange()[0]
         center = QtCore.QPointF((rng[0] + rng[1]) / 2, 0)
-        for lane in lanes:
-            lane.plot.vb.scaleBy((factor, 1.0), center=center)
+        lanes[0].plot.vb.scaleBy((factor, 1.0), center=center)
+
+    # ---------------------------------------------------------- suwaki nawigacji
+    def _on_manual_range(self, *args) -> None:
+        self._user_zoomed = True
+
+    def _first_vb(self):
+        """ViewBox pierwszego widocznego pasa (a jak brak — pierwszego istniejącego)."""
+        for lane in self.visible_lanes():
+            if lane.plot is not None:
+                return lane.plot.vb
+        for lane in self._lanes.values():
+            if lane.plot is not None:
+                return lane.plot.vb
+        return None
+
+    def _on_nav_range(self, x0: float, x1: float) -> None:
+        vb = self._first_vb()
+        if vb is None:
+            return
+        self._user_zoomed = True
+        vb.setXRange(float(x0), float(x1), padding=0.0)
+
+    def view_x_range(self) -> Optional[tuple[float, float]]:
+        vb = self._first_vb()
+        if vb is None:
+            return None
+        lo, hi = vb.viewRange()[0]
+        if not (np.isfinite(lo) and np.isfinite(hi)) or hi <= lo:
+            return None
+        return float(lo), float(hi)
+
+    def set_view_x(self, x0: float, x1: float) -> None:
+        vb = self._first_vb()
+        if vb is None:
+            return
+        self._user_zoomed = True
+        vb.setXRange(float(x0), float(x1), padding=0.0)
+
+    def _data_x_bounds(self) -> Optional[tuple[float, float]]:
+        """Zakres X danych widocznych pasów (liczony raz, dopóki serie się nie zmienią)."""
+        if self._x_bounds is None:
+            xs = [lane.spec.x[np.isfinite(lane.spec.x)] for lane in self.visible_lanes()]
+            xs = [a for a in xs if len(a)]
+            if not xs:
+                return None
+            lo = min(float(a.min()) for a in xs)
+            hi = max(float(a.max()) for a in xs)
+            if hi <= lo:
+                hi = lo + 1.0
+            self._x_bounds = (lo, hi)
+        return self._x_bounds
+
+    def _update_nav(self, *args) -> None:
+        """Przekazuje suwakom pełny zakres danych i bieżący widok."""
+        bounds = self._data_x_bounds()
+        vb = self._first_vb()
+        if bounds is None or vb is None:
+            self.nav.set_domain(None, None)
+            return
+        self.nav.set_domain(bounds[0], bounds[1])
+        x0, x1 = vb.viewRange()[0]
+        self.nav.set_view(x0, x1)
 
     # ---------------------------------------------------------------- kursor
     def cursor_x(self) -> Optional[float]:

@@ -42,7 +42,7 @@ ani internetu. Logi nie są nigdzie wysyłane.
 - wykres w funkcji **czasu** albo w funkcji **obrotów**; przy obrotach program dzieli dane
   na przebiegi i domyślnie rysuje punkty, żeby linie nie tworzyły zygzaków
 - „Normalizuj 0–100%”, gdy parametry mają bardzo różne wartości (obroty 0–6000, temperatura 80–90)
-- zoom rolką, przesuwanie, eksport wykresu do PNG
+- zoom rolką lub suwakiem pod wykresem, przesuwanie myszą lub suwakiem, eksport wykresu do PNG
 
 **Tabela z kolorowaniem**
 - im wyższa wartość, tym mocniejszy kolor komórki — wzrosty obrotów widać na pierwszy rzut oka

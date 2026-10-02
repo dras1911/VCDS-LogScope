@@ -431,7 +431,15 @@ class LogView(QtWidgets.QWidget):
         )
         if self.chart.cursor_x() is not None:
             self.bands.set_cursor_x(self.chart.cursor_x(), emit=False)
-        self.bands.fit() if bands else self.chart.fit()
+        # przenosimy oglądany fragment na drugi wykres, żeby przełączenie widoku
+        # nie zrzucało przybliżenia ustawionego suwakami
+        prev = self.chart if bands else self.bands
+        target = self.bands if bands else self.chart
+        rng = prev.view_x_range()
+        if rng is not None:
+            target.set_view_x(*rng)
+        else:
+            target.fit()
         self._check_scales()
 
     def _active_view(self):

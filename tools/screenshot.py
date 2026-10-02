@@ -91,6 +91,16 @@ def main() -> int:
     shot(win, "03_wykres_rpm")
     view.cmb_x.setCurrentIndex(0)
 
+    # widok pasm
+    view.cmb_view.setCurrentIndex(1)
+    QtWidgets.QApplication.processEvents()
+    win.grab()                       # wymusza przeliczenie układu pasów
+    view.bands.set_cursor_x(20.4, emit=True)
+    QtWidgets.QApplication.processEvents()
+    shot(win, "09_pasma")
+    view.cmb_view.setCurrentIndex(0)
+    QtWidgets.QApplication.processEvents()
+
     # porównanie
     variant = make_variant(SAMPLE, OUT / "LOG-01-031-002-011-V10_B.CSV")
     log_a = parse_log(SAMPLE)

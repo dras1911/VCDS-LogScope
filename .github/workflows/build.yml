@@ -1,0 +1,109 @@
+# Budowa paczek .exe dla Windows — uruchamiana ręcznie z zakładki „Actions”.
+#
+# Wynik każdego przebiegu (Actions → przebieg → Artifacts):
+#   windows-onefile      — VCDS-LogScope.exe (Windows 10/11, jeden plik)
+#   windows-onedir       — wersja katalogowa (podstawa ZIP-a portable)
+#   windows-portable-zip — VCDS-LogScope-portable.zip (Windows 10/11)
+#   zrzuty-ekranu        — zrzuty interfejsu z tego przebiegu (podgląd zmian)
+#   windows7-legacy      — VCDS-LogScope dla Windows 7/8 (Python 3.8 + Qt 5.15)
+#
+# Każda paczka przechodzi autotest (`--selftest` + `--selftest-gui`), więc błędne
+# wydanie nie przejdzie budowy.
+
+name: Budowa paczek Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows 10/11 (PySide6)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: Środowisko i zależności
+        shell: cmd
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --upgrade pip
+          .venv\Scripts\python -m pip install -r requirements-build.txt
+
+      - name: Testy jednostkowe
+        shell: cmd
+        run: |
+          set QT_QPA_PLATFORM=offscreen
+          .venv\Scripts\python -m pytest tests -q
+
+      - name: Zrzuty ekranu (podgląd zmian w interfejsie)
+        shell: cmd
+        continue-on-error: true
+        run: .venv\Scripts\python tools\screenshot.py build\shots
+
+      - name: Budowa — wersja katalogowa i jednoplikowa
+        shell: cmd
+        run: |
+          .venv\Scripts\python tools\build_exe.py --no-shortcut
+          .venv\Scripts\python tools\build_exe.py --onefile --no-shortcut
+
+      - name: Paczka portable (ZIP)
+        shell: pwsh
+        run: Compress-Archive -Path "dist/VCDS LogScope/*" -DestinationPath "dist/VCDS-LogScope-portable.zip" -Force
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-onefile
+          path: "dist/onefile/VCDS LogScope.exe"
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-onedir
+          path: "dist/VCDS LogScope/**"
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable-zip
+          path: "dist/VCDS-LogScope-portable.zip"
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ hashFiles('build/shots/*') != '' }}
+        with:
+          name: zrzuty-ekranu
+          path: "build/shots/*"
+
+  windows-legacy:
+    name: Windows 7/8 (PySide2, Python 3.8)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.8"
+
+      - name: Środowiska (.venv38 z Qt 5.15 + puste .venv)
+        shell: cmd
+        run: |
+          python -m venv .venv38
+          .venv38\Scripts\python -m pip install "pip==24.3.1"
+          .venv38\Scripts\python -m pip install PySide2==5.15.2.1 pyqtgraph==0.13.3 "numpy<1.25" pyinstaller==5.13.2 pillow
+          python -m venv .venv
+
+      - name: Budowa — Windows 7/8
+        shell: cmd
+        run: .venv38\Scripts\python tools\build_exe.py --legacy
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows7-legacy
+          path: "dist/legacy/VCDS LogScope.exe"
+          if-no-files-found: error

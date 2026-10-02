@@ -53,7 +53,9 @@ def _selftest(argv: list[str]) -> int:
     from .parser import parse_log
 
     log = parse_log(log_path)
-    cmp_view = CompareView([log, log], win.theme, win)
+    # parent=None: gdyby okno porównania było dzieckiem okna głównego, jego zawartość
+    # nakładałaby się na zrzut `win.grab()` (stary artefakt selftestu)
+    cmp_view = CompareView([log, log], win.theme, None)
     cmp_view.resize(1400, 800)
     cmp_view.ensurePolished()
     cmp_view.chart.set_cursor_x(20.4, emit=True)
@@ -133,12 +135,51 @@ def _selftest(argv: list[str]) -> int:
     view.cmb_x.setCurrentIndex(0)
     QtWidgets.QApplication.processEvents()
 
+    # --- suwaki pod wykresem: przesuwanie i powiększanie muszą działać w obu oknach
+    nav_ok = False
+    try:
+        view.cmb_view.setCurrentIndex(0)          # na wierzch wykres nakładany
+        QtWidgets.QApplication.processEvents()
+        parts: list[str] = []
+        checks: list[bool] = []
+        for w, name in ((view, "pojedynczy log"), (cmp_view, "porównanie")):
+            chart = w.chart
+            nav = chart.nav
+            r0a, r0b = chart.vb.viewRange()[0]
+            span0 = r0b - r0a
+            nav.zoom.setValue(nav.ZOOM_STEPS // 2)     # pół suwaka powiększenia
+            QtWidgets.QApplication.processEvents()
+            z0, z1 = chart.vb.viewRange()[0]
+            zoomed = (z1 - z0) < span0 - 1e-9
+            nav.scroll.setValue(nav.scroll.maximum())  # suwak widoku na koniec logu
+            QtWidgets.QApplication.processEvents()
+            a0, a1 = chart.vb.viewRange()[0]
+            moved = a0 > z0 + 1e-9                     # ruszył się WZGLĘDEM przybliżenia
+            parts.append(f"{name}: powiększenie={'OK' if zoomed else 'BŁĄD'}, "
+                         f"przesunięcie={'OK' if moved else 'BŁĄD'}")
+            checks += [zoomed, moved]
+            chart.fit()                            # przywróć widok dla dalszych kroków
+            QtWidgets.QApplication.processEvents()
+        nav_ok = len(checks) == 4 and all(checks)
+        lines.append("SELFTEST: suwaki: " + "; ".join(parts))
+    except Exception as exc:             # raport zamiast wyjątku znikąd
+        lines.append(f"SELFTEST: suwaki: BŁĄD {exc}")
+
+    # zrzut z przybliżeniem zrobionym suwakiem (dowód dla przeglądu wydania)
+    try:
+        view.chart.nav.zoom.setValue(400)
+        QtWidgets.QApplication.processEvents()
+        ok = win.grab().save(str(out_dir / "selftest_suwaki.png")) and ok
+        lines.append(f"SELFTEST: zapisano {out_dir / 'selftest_suwaki.png'}")
+    except Exception as exc:
+        lines.append(f"SELFTEST: zrzut suwaków: BŁĄD {exc}")
+
     lines.append(f"SELFTEST: wersja {__version__}")
     lines.append(f"SELFTEST: log={Path(log_path).name} kanaly={channels} wiersze={view.log.n_rows} "
                  f"parametry_wspolne={params} siatka={rows} pasma={bands}")
-    good = ok and channels and params and bands and cursor_ok and sel_ok
+    good = ok and channels and params and bands and cursor_ok and sel_ok and nav_ok
     lines.append(f"SELFTEST: kontrole: obrazy={ok} kanaly={bool(channels)} parametry={bool(params)} "
-                 f"pasma={bool(bands)} kursor={cursor_ok} zaznaczenie={sel_ok}")
+                 f"pasma={bool(bands)} kursor={cursor_ok} zaznaczenie={sel_ok} suwaki={nav_ok}")
     lines.append("SELFTEST: OK" if good else "SELFTEST: BLAD")
 
     report = out_dir / "selftest_report.txt"

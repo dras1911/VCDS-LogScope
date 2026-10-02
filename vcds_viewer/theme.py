@@ -176,6 +176,14 @@ def stylesheet(t: Theme) -> str:
     QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
     QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
+    /* suwak powiększenia pod wykresem (nawigacja) */
+    QSlider::groove:horizontal {{ height: 4px; background: {t.border}; border-radius: 2px; }}
+    QSlider::sub-page:horizontal {{ background: {t.accent}; border-radius: 2px; }}
+    QSlider::handle:horizontal {{
+        background: {t.text_dim}; width: 12px; margin: -5px 0; border-radius: 6px;
+    }}
+    QSlider::handle:horizontal:hover, QSlider::handle:horizontal:pressed {{ background: {t.accent}; }}
+
     QGroupBox {{
         border: 1px solid {t.border}; border-radius: 6px; margin-top: 10px; padding-top: 8px;
     }}

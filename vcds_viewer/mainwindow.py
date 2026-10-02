@@ -421,7 +421,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "<b>←/→</b> — kursor o jedną próbkę<br>"
             "<b>klik</b> — przypnij kursor, <b>Esc</b> — odepnij<br>"
             "<b>rolka</b> — zoom osi X, <b>Ctrl+rolka</b> — zoom osi Y<br>"
-            "<b>przeciąganie</b> — przesuwanie widoku, <b>dwuklik</b> — dopasuj",
+            "<b>przeciąganie</b> — przesuwanie widoku, <b>dwuklik</b> — dopasuj<br>"
+            "<b>suwaki pod wykresem</b> — powiększenie i przesuwanie widoku",
         )
 
     def show_about(self):
