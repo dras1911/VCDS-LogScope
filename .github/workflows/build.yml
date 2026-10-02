@@ -45,6 +45,8 @@ jobs:
       - name: Zrzuty ekranu (podgląd zmian w interfejsie)
         shell: cmd
         continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: windows
         run: .venv\Scripts\python tools\screenshot.py build\shots
 
       - name: Budowa — wersja katalogowa i jednoplikowa
