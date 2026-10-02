@@ -32,21 +32,24 @@ def _selftest(argv: list[str]) -> int:
     # ślad postępu: przy zawieszeniu na maszynie bez użytkownika widać, na którym
     # kroku stanął autotest (build_exe pokazuje ten plik przy niepowodzeniu)
     trace = out_dir / "selftest_trace.txt"
+    import threading
+    import time
+
+    _t0 = time.monotonic()
 
     def _note(step: str) -> None:
+        # czas od startu ułatwia odróżnienie „wolna praca” od „zawieszonego zamknięcia”
         try:
             with trace.open("a", encoding="utf-8") as fh:
-                fh.write(step + "\n")
+                fh.write(f"{time.monotonic() - _t0:7.1f}s  {step}\n")
                 fh.flush()
         except OSError:
             pass
 
-    import threading
-
     # awaryjne wyjście: gdyby zamknięcie blokowało się bez końca (np. niewidoczny
     # komunikat modalny na maszynie bez użytkownika), smoke dostanie kod 9
     # zamiast wisieć godzinami
-    _failsafe = threading.Timer(240.0, os._exit, args=(9,))
+    _failsafe = threading.Timer(540.0, os._exit, args=(9,))
     _failsafe.daemon = True
     _failsafe.start()
     _note("start")
@@ -215,15 +218,15 @@ def _selftest(argv: list[str]) -> int:
 
     report = out_dir / "selftest_report.txt"
     report.write_text("\n".join(lines), encoding="utf-8")
-    if sys.stdout is not None:      # w wersji .exe (--windowed) brak konsoli
+    _note("raport-zapisany")
+    if sys.stdout is not None and not getattr(sys, "frozen", False):
+        # w wersji .exe (--windowed) brak konsoli; w spakowanej aplikacji nie drukujemy,
+        # żeby między zapisem raportu a twardym zakończeniem nie było niczego
         print("\n".join(lines))
-    # Tryb testowy kończymy twardo: w spakowanej aplikacji na maszynach CI zamknięcie
-    # interpretera potrafi zawisnąć po wykonanej pracy (objaw: raport gotowy, proces
-    # żyje do limitu smoke), a os._exit gwarantuje deterministyczne zakończenie.
-    try:
-        sys.stdout.flush()
-    except Exception:
-        pass
+    # Tryb testowy kończymy twardo: w spakowanej aplikacji na maszynach CI samo
+    # zamknięcie interpretera potrafi zawisnąć po wykonanej pracy, a os._exit
+    # gwarantuje deterministyczne zakończenie (raport jest już na dysku)
+    _note("przed-exit")
     os._exit(0 if good else 1)
 
 

@@ -200,11 +200,23 @@ def smoke_test(exe: Path) -> bool:
                 except Exception:      # diagnostyka nie może wywalić samego smoke'u
                     pass
 
+    def _archive(tag: str) -> None:
+        # kopia śladu/raportu/znacznika pod stałą nazwą: pliki robocze są czyszczone
+        # przed kolejnym smoke'em, a te mają przetrwać do artefaktu diagnostycznego
+        for src, kind in ((trace, "trace"), (report, "report"), (marker, "marker")):
+            if src.exists():
+                try:
+                    (out / f"{kind}_{tag}.txt").write_text(
+                        src.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+                except OSError:
+                    pass
+
     _cleanup()
     print("Autotest paczki (bez okna):", exe.name, "…", flush=True)
-    rc, output = _run_bounded(base + ["--selftest", str(out)], timeout=300)
+    rc, output = _run_bounded(base + ["--selftest", str(out)], timeout=600)
     text = report.read_text(encoding="utf-8") if report.exists() else output
     _show_state()
+    _archive("bezokna")
     ok_headless = rc == 0 and "SELFTEST: OK" in text
     if not ok_headless:
         print(f"  BŁĄD bez okna (kod {rc}):", (text or "(brak raportu)").strip()[-400:], flush=True)
@@ -219,6 +231,7 @@ def smoke_test(exe: Path) -> bool:
         print("Autotest paczki (pełne GUI):", exe.name, "…", flush=True)
         rc_gui, out_gui = _run_bounded(base + ["--selftest-gui"], timeout=300)
         _show_state()
+        _archive("gui")
         if rc_gui != 0:
             detail = f"  BŁĄD GUI (kod {rc_gui})"
             if out_gui.strip():
