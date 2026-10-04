@@ -330,9 +330,15 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{log.meta.file_name}   •   {log.meta.summary()}   •   {log.meta.detail()}"
         )
         n = log.n_rows
+        sesje = ""
+        if log.blocks > 1:
+            # 2–4 „sesje”, pozostałe „sesji” — plik z kilkoma nagraniami (VCDS dopisuje)
+            forma = ("sesje" if log.blocks % 10 in (2, 3, 4)
+                     and log.blocks % 100 not in (12, 13, 14) else "sesji")
+            sesje = f"  •  {log.blocks} {forma} logowania"
         self.lbl_rows.setText(
             f"{n} wierszy  •  {len(log.groups)} grupy  •  {fmt_time(log.duration, 1)} s  "
-            f"•  {len(log.numeric_channels)} parametrów"
+            f"•  {len(log.numeric_channels)} parametrów{sesje}"
         )
 
     def _on_cursor(self, t: float, rpm: float, _view):
@@ -400,8 +406,14 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<b>Silnik:</b> {log.meta.engine}",
             f"<b>VCDS:</b> {log.meta.vcds_version}  ({log.meta.data_version})",
             f"<b>Czas trwania:</b> {fmt_time(log.duration, 2)} s, wierszy: {log.n_rows}",
-            "<br><b>Grupy i parametry:</b>",
         ]
+        if log.blocks > 1:
+            forma = ("sesje" if log.blocks % 10 in (2, 3, 4)
+                     and log.blocks % 100 not in (12, 13, 14) else "sesji")
+            rows.append(f"<b>Sesje logowania:</b> {log.blocks} {forma} "
+                        "(VCDS dopisał kolejne nagrania do tego pliku — czasy kolejnych "
+                        "sesji są dokładane za poprzednimi na wspólnej osi czasu)")
+        rows.append("<br><b>Grupy i parametry:</b>")
         for g in log.groups:
             chans = ", ".join(f"{c.name} [{c.unit}]" for c in g.channels if c.has_data)
             rows.append(f"<b>Grupa {g.letter}: {g.group_id}</b> — {g.n_samples} próbek<br>{chans or '—'}")

@@ -204,11 +204,23 @@ def parse_log(path: str | Path) -> LogData:
         (g.letter, k): [] for g in groups for k in range(4)
     }
     blocks = 1
+    # Czas bywa „restartowany”: VCDS dopisuje kolejne sesje do tego samego pliku
+    # i każda zaczyna CZAS od zera. Taką sesję przesuwamy tuż za poprzednią (osobno
+    # dla każdej grupy), żeby czasy nigdy się nie cofały — inaczej wykres łączy koniec
+    # sesji z jej początkiem („piły”, ściany, nakładki), a przebiegi mnożą się bez sensu.
+    shift: dict[str, float] = {g.letter: 0.0 for g in groups}
+    last_raw: dict[str, float] = {}
+    last_adj: dict[str, float] = {}
 
     for line in lines[units_row_idx + 1:]:
         if not line.strip():
             continue
         fields = _pad(_split(line), width + 4)
+        if any("VCID:" in (f or "") for f in fields):
+            # nagłówek kolejnej sesji logowania — to nie jest wiersz danych
+            if any(times.values()):
+                blocks += 1
+            continue
         marker = (fields[0] or "").strip()
         row_time: dict[str, float] = {}
         for col, letter, _gid in groups_found:
@@ -229,7 +241,14 @@ def parse_log(path: str | Path) -> LogData:
         for col, letter, _gid in groups_found:
             if letter not in row_time:
                 continue
-            times[letter].append(row_time[letter])
+            t_raw = row_time[letter]
+            if letter in last_raw and t_raw < last_raw[letter] - 1e-9:
+                # zegar cofnął się → zaczęła się kolejna sesja; dokładamy ją za poprzednią
+                shift[letter] = last_adj[letter]
+            adjusted = t_raw + shift[letter]
+            last_raw[letter] = t_raw
+            last_adj[letter] = adjusted
+            times[letter].append(adjusted)
             for k in range(4):
                 idx = col + 1 + k
                 raw = (fields[idx] or "").strip() if idx < len(fields) else ""
