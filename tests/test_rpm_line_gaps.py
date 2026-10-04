@@ -1,8 +1,11 @@
-"""Testy rozcinania linii przy osi obrotów (żeby nie było „ścian” i pętli).
+"""Testy rozcinania linii przy „ścianach” (oś obrotów) i przerwach w logowaniu (oś czasu).
 
 Sortowanie próbek po obrotach zestawia ze sobą punkty z odległych momentów logu
 (np. dwa biegi jałowe albo koniec i początek przejazdu). Połączenie ich linią dawało
 pionowe ściany, których w rzeczywistości nie było — linia musi się tam rozcinać.
+
+Tak samo przy osi czasu: przerwa w logowaniu (długa luka bez próbek) nie może być
+zaszywana prostym odcinkiem, jakby pomiar trwał nieprzerwanie.
 """
 
 from __future__ import annotations
@@ -107,12 +110,48 @@ def test_insert_gaps_keeps_continuous_data():
     assert len(_runs(xs, ys)) == 1
 
 
-def test_time_mode_is_untouched(log):
-    """Przy osi czasu linia zostaje ciągła — rozcinanie dotyczy tylko osi obrotów."""
+def test_time_mode_keeps_continuous_data(log):
+    """Bez przerw w logowaniu linia przy osi czasu zostaje ciągła (nic nie zmieniamy)."""
     channel = log.find((("obciążenie"), ("%"), 0))
     x, y = log.plot_xy(channel, "time", split_sweeps=True)
     assert len(x) == len(np.asarray(channel.t, dtype=float))
     assert not np.isnan(y).any()
+
+
+def test_time_mode_cuts_logging_pauses(log):
+    """Przerwa w logowaniu (długa luka czasu) rozcina linię także przy osi czasu.
+
+    Wcześniej linia biegła przez taką lukę prosto, jak gdyby pomiar trwał
+    nieprzerwanie — na zrzutach wyglądało to jak „ściana” i sugerowało dane,
+    których w rzeczywistości nie było.
+    """
+    class _Ch:
+        def __init__(self, t, y):
+            self.t = np.asarray(t, dtype=float)
+            self.y = np.asarray(y, dtype=float)
+
+    t = [0.0, 1.0, 2.0, 3.0, 40.0, 41.0, 42.0, 43.0]   # przerwa 37 s w logowaniu
+    y = [10.0, 12.0, 11.0, 13.0, 30.0, 31.0, 29.0, 32.0]
+    x, yy = log.plot_xy(_Ch(t, y), "time")
+    assert np.isnan(x).sum() == 1, "przerwa 37 s musi rozciąć linię"
+    runs = _runs(x, yy)
+    assert len(runs) == 2
+    assert list(runs[0][1]) == [10.0, 12.0, 11.0, 13.0]
+    assert list(runs[1][1]) == [30.0, 31.0, 29.0, 32.0]
+
+
+def test_time_mode_cuts_only_long_pauses(log):
+    """Drobne odstępy czasu (normalne próbkowanie) nie rozcinają linii przy osi czasu."""
+    class _Ch:
+        def __init__(self, t, y):
+            self.t = np.asarray(t, dtype=float)
+            self.y = np.asarray(y, dtype=float)
+
+    t = [0.0, 1.0, 2.0, 3.5, 4.5, 5.5]                  # największy odstęp 1,5 s < próg
+    y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    x, yy = log.plot_xy(_Ch(t, y), "time")
+    assert not np.isnan(x).any()
+    assert len(_runs(x, yy)) == 1
 
 
 def test_mean_by_rpm_smooths_scatter():

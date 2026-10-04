@@ -306,12 +306,20 @@ class LogData:
                 split_sweeps: bool = False) -> tuple[np.ndarray, np.ndarray]:
         """Zwraca (x, y) gotowe do narysowania.
 
-        W trybie RPM z `split_sweeps=True` linia jest dzielona na przebiegi (przerwy = NaN),
-        a każdy przebieg sortowany po obrotach — dzięki temu nie ma pętli.
+        Linia jest rozcinana w dwóch przypadkach — w obu po to, żeby nie rysować
+        odcinków, których w rzeczywistości nie było:
+
+        * oś obrotów (`split_sweeps=True`): sortowanie zestawia próbki z różnych
+          momentów logu, więc na skokach czasu linia pęka (`_insert_gaps`),
+          a każdy przebieg jest sortowany po obrotach — dzięki temu nie ma pętli;
+        * oś czasu: przerwa w logowaniu (luka dłuższa niż `_gap_limit`) pęka linię,
+          zamiast zaszywać ją prostym odcinkiem przez brakujące sekundy.
         """
         y = np.asarray(channel.y, dtype=float)
         if mode == X_TIME:
-            return np.asarray(channel.t, dtype=float), y
+            t = np.asarray(channel.t, dtype=float)
+            limit = self._gap_limit(t)
+            return self._insert_gaps(t, y, t, limit)
         x = self.x_for(channel, X_RPM)
         if not split_sweeps:
             return x, y
