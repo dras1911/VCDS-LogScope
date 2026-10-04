@@ -3,6 +3,28 @@
 Każde wydanie ma własny numer. Opis zmian dla danej wersji trafia automatycznie
 do treści wydania na GitHubie (skrypt `tools/create_release.py` czyta ten plik).
 
+## 1.0.11 — 4 października 2026
+
+**Poprawki zgłoszone przez użytkownika („coś się popsuło z obrotami”, „krzaczenie” wykresów)**
+
+- **Pliki z kilkoma sesjami logowania są teraz scalane poprawnie.** VCDS dopisuje kolejne
+  nagrania do tego samego pliku, a każda sesja zaczyna „CZAS” od zera. Wcześniej wszystkie
+  wiersze trafiały do jednej serii z cofającym się czasem — wykres rysował „piły” i nakładał
+  sesje na siebie, a przy osi obrotów liczba przebiegów mnożyła się bez sensu (na pliku
+  zgłaszającego: 123 przebiegi; po poprawce: 22). Teraz każda kolejna sesja jest dokładana
+  tuż za poprzednią na wspólnej osi czasu, a wiersze nagłówków powtórzonych sesji nie
+  trafiają już na wykres jako próbki. Liczbę sesji widać w pasku statusu („2 sesje logowania”)
+  i w oknie „Informacje o logu”.
+- **Przerwa w logowaniu przy osi czasu rwie linię, zamiast zaszywać ją prostym odcinkiem.**
+  Dotąd cięcie przerw działało wyłącznie przy osi obrotów; przy osi czasu linia biegła prosto
+  przez brakujące sekundy (kilkanaście sekund „przez nic”), co wyglądało jak zepsuty wykres.
+
+**Jakość**
+
+- Pełny zestaw testów: 104/104 — w tym nowe testy wielosesyjne pisane przed poprawką
+  (czasy nie mogą się cofać, nagłówki sesji nie mogą trafiać na wykres, druga sesja musi
+  być dokładana za pierwszą). Autotest bezokienkowy na pliku zgłaszającego: OK.
+
 ## 1.0.10 — 2 października 2026
 
 **Nowe**
